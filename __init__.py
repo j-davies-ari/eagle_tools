@@ -1,3 +1,3 @@
-__all__ = ["read", "plot", "utilities", "database"]
+__all__ = ["read", "plot", "utilities", "database","emission"]
 
 from . import *

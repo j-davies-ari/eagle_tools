@@ -6,6 +6,7 @@ import h5py as h5
 from sys import exit
 from importlib import import_module
 from astropy.cosmology import FlatLambdaCDM
+from copy import deepcopy
 
 class snapshot(object):
 
@@ -13,12 +14,9 @@ class snapshot(object):
                         run = 'REFERENCE',
                         tag='028_z000p000',
                         pdata_type = 'SNAPSHOT',
-                        data_location = '/hpcdata0/simulations/EAGLE/',
-                        GM = None,
-                        seed = None,
-                        visualisation=False):
+                        data_location = '/hpcdata0/simulations/EAGLE/'):
 
-        self.E = import_module('eagle')
+        # self.E = import_module('eagle')
         self.read = import_module('read_eagle')
 
         # if visualisation:
@@ -31,79 +29,181 @@ class snapshot(object):
         self.run = run
         self.tag = tag
         self.pdata_type = pdata_type
-
-        # # Extra path component for a genetically modified run
-        # if GM is not None:
-        #     data_location = '/hpcdata0/simulations/EAGLE/'
-        #     gm_path_extra_1 = 'GM/'
-        #     gm_path_extra_2 = '/'+GM+'/'+seed
-        # else:
-        #     gm_path_extra_1 = ''
-        #     gm_path_extra_2 = ''
-
-        # Name of one file from the snapshot
-        if pdata_type == 'SNAPSHOT':
-            self.snapfile = data_location + sim + '/' + run + '/data/snapshot_'+tag+'/snap_'+tag+'.0.hdf5'
-        elif pdata_type == 'PARTDATA':
-            self.snapfile = data_location + sim + '/' + run + '/data/particledata_'+tag+'/eagle_subfind_particles_'+tag+'.0.hdf5'
-        else:
-            raise TypeError('Please pick a valid pdata_type (SNAPSHOT or PARTDATA)')
-
-
         self.sim_path = data_location + sim + '/' + run + '/data/'
 
-        # Get volume information
-        boxsize = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/BoxSize")
-        self.NumPart = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/NumPart_Total")
-        self.h = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/HubbleParam")
-        self.aexp = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/ExpansionFactor")
-        self.z = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/Redshift")
+        # Create strings to point the read module to the first snapshot/particle/subfind files
+        if pdata_type == 'SNAPSHOT':
+            self.snapfile = self.sim_path + 'snapshot_'+tag+'/snap_'+tag+'.0.hdf5'
+        elif pdata_type == 'PARTDATA':
+            self.snapfile = self.sim_path + 'particledata_'+tag+'/eagle_subfind_particles_'+tag+'.0.hdf5'
+        else:
+            raise TypeError('Please pick a valid pdata_type (SNAPSHOT or PARTDATA)')
+        self.subfindfile = self.sim_path + 'groups_'+tag+'/eagle_subfind_tab_' + tag + '.'
+
+        # Get volume information. Note that header is taken from one file only, so quantities such as 'NumPart_ThisFile' are not useful.
+        self.header = self.attrs('Header')
+
+        # Assign some of the most useful quantities to the snapshot object
+        self.NumPart = self.header['NumPart_Total']
+        self.h = self.header['HubbleParam']
+        self.aexp = self.header['ExpansionFactor']
+        self.z = self.header['Redshift']
+        self.masstable = self.header['MassTable']/self.h
+        boxsize = self.header['BoxSize']
         self.physical_boxsize = boxsize * self.aexp/self.h
 
-        with h5.File(self.snapfile, 'r') as f:
-            self.masstable = f['Header'].attrs['MassTable']/self.h
+        # boxsize = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/BoxSize")
+        # self.NumPart = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/NumPart_Total")
+        # self.h = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/HubbleParam")
+        # self.aexp = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/ExpansionFactor")
+        # self.z = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/Redshift")
+        
 
-        self.cosmology = {}
-        self.cosmology['Omega0'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/Omega0")
-        self.cosmology['OmegaBaryon'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/OmegaBaryon")
-        self.cosmology['OmegaLambda'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/OmegaLambda")
-        self.cosmology['HubbleParam'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/HubbleParam")
+        # with h5.File(self.snapfile, 'r') as f:
+        #     self.masstable = f['Header'].attrs['MassTable']/self.h
 
-        self.f_b_cosmic = self.cosmology['OmegaBaryon']/self.cosmology['Omega0']
+        # self.cosmology = {}
+        # self.cosmology['Omega0'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/Omega0")
+        # self.cosmology['OmegaBaryon'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/OmegaBaryon")
+        # self.cosmology['OmegaLambda'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/OmegaLambda")
+        # self.cosmology['HubbleParam'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/HubbleParam")
 
-        # Get halo information
-        first_subhalo = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/FirstSubhaloID'))
+        # self.f_b_cosmic = self.cosmology['OmegaBaryon']/self.cosmology['Omega0']
+
+        self.f_b_cosmic = self.header['OmegaBaryon']/self.header['Omega0']
+
+        # Create an astropy.cosmology object for doing cosmological calculations.
+
+        self.cosmology = FlatLambdaCDM(100.*self.header['HubbleParam'],Om0=self.header['Omega0'],Ob0=self.header['OmegaBaryon'])
+
+        # Load in basic catalogues for halo/subhalo identification
+
+        # first_subhalo = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/FirstSubhaloID'))
+        self.first_subhalo = self.fof('FirstSubhaloID')
 
         # If the final FOF group is empty, it can be assigned a FirstSubhaloID which is out of range
-        Mstar_30kpc = np.array(self.E.readArray("SUBFIND", self.sim_path, self.tag, "/Subhalo/ApertureMeasurements/Mass/030kpc"))
-        max_subhalo = len(Mstar_30kpc)
-        del Mstar_30kpc
-        first_subhalo[first_subhalo==max_subhalo] -= 1 # this line fixes the issue
+        # Mstar_30kpc = np.array(self.E.readArray("SUBFIND", self.sim_path, self.tag, "/Subhalo/ApertureMeasurements/Mass/030kpc"))
+        self.subhalo_Mstar_30kpc = self.subfind('ApertureMeasurements/Mass/030kpc')
 
-        self.subfind_all_gn = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/GroupNumber'))
-        self.subfind_all_sgn = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/SubGroupNumber'))
-        self.subfind_all_COP = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/CentreOfPotential'))
+        max_subhalo = len(self.subhalo_Mstar_30kpc)
+        self.first_subhalo[self.first_subhalo==max_subhalo] -= 1 # this line fixes the issue
 
-        self.subfind_centres = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/CentreOfPotential'))[first_subhalo, :]
-        self.bulk_velocity = np.array(self.E.readArray("SUBFIND",self.sim_path,self.tag,'Subhalo/Velocity'))[first_subhalo,:]
-        self.r200 = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/Group_R_Crit200'))
-        self.M200 = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/Group_M_Crit200'))
+        # Group number and subgroup number for all subhaloes
+        self.subhalo_gn = self.subfind('GroupNumber')
+        self.subhalo_sgn = self.subfind('SubGroupNumber')
+        self.subhalo_COP = self.subfind('CentreOfPotential')
+        self.subhalo_bulk_velocity = self.subfind('Velocity')
+
+        # Useful quantities for centrals only
+        self.central_Mstar_30kpc = self.subhalo_Mstar_30kpc[self.first_subhalo]
+        self.central_COP = self.subhalo_COP[self.first_subhalo,:]
+        self.central_bulk_velocity = self.subhalo_bulk_velocity[self.first_subhalo,:]
+        self.r200 = self.fof('Group_R_Crit200')
+        self.M200 = self.fof('Group_M_Crit200')
+
+
+        # self.subfind_all_gn = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/GroupNumber'))
+        # self.subfind_all_sgn = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/SubGroupNumber'))
+        # self.subfind_all_COP = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/CentreOfPotential'))
+
+        # self.subfind_centres = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/CentreOfPotential'))[first_subhalo, :]
+        # self.bulk_velocity = np.array(self.E.readArray("SUBFIND",self.sim_path,self.tag,'Subhalo/Velocity'))[first_subhalo,:]
+        # self.r200 = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/Group_R_Crit200'))
+        # self.M200 = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/Group_M_Crit200'))
 
 
 
         self.have_run_select = False # This is set to True when a region has been selected - prevents crashes later on.
 
 
-    def astropy_cosmology(self):
-        '''
-        Create an astropy.cosmology object for doing cosmological calculations based on the cosmology in this snapshot.
-        '''
-        return FlatLambdaCDM(100.*self.cosmology['HubbleParam'],Om0=self.cosmology['Omega0'],Ob0=self.cosmology['OmegaBaryon'])
+    # def astropy_cosmology(self):
+    #     '''
+    #     Create an astropy.cosmology object for doing cosmological calculations based on the cosmology in this snapshot.
+    #     '''
+    #     return FlatLambdaCDM(100.*self.header['HubbleParam'],Om0=self.header['Omega0'],Ob0=self.header['OmegaBaryon'])
         
+
+
+    def catalogue_read(self,quantity,table,phys_units=True,cgs_units=False,verbose=False):
+        '''
+        Read in FOF or SUBFIND catalogues.
+        The user may prefer to use the wrapper functions 'fof' and 'subfind' rather than specifying 'table' here.
+        '''
+
+        assert table in ['FOF','Subhalo'],'table must be either FOF or Subhalo'
+
+        file_ind = 0
+        while True:
+
+            try:
+                with h5.File(self.subfindfile+str(file_ind)+'.hdf5', 'r') as f:
+                    
+                    if file_ind == 0:
+                        
+                        data = f['/'+table+'/%s'%(quantity)]
+
+                        # Grab conversion factors from first file
+                        h_conversion_factor = data.attrs['h-scale-exponent']
+                        aexp_conversion_factor = data.attrs['aexp-scale-exponent']
+                        cgs_conversion_factor = data.attrs['CGSConversionFactor']
+
+                        if verbose:
+                            print 'Loading ',quantity
+                            print 'h exponent = ',h_conversion_factor
+                            print 'a exponent = ',aexp_conversion_factor
+                            print 'CGS conversion factor = ',cgs_conversion_factor
+
+                        # Get the data type
+                        dt = deepcopy(data.dtype)
+
+                        data_arr = np.array(data,dtype=dt)
+                        # if quantity == 'GroupNumber':
+                        #     print data.dtype
+                        #     # print data_arr
+                        # exit()
+                
+                    else:
+                        data = f['/'+table+'/%s'%(quantity)]
+                        data_arr = np.append(data_arr,np.array(data,dtype=dt),axis=0)
+                        # print data_arr                
+
+            except:
+                # print 'Run out of files at ',file_ind
+                break
+
+            file_ind += 1
+        
+        if np.issubdtype(dt,np.integer):
+            # Don't do any corrections if loading in integers
+            return data_arr
+
+        else:
+
+            if phys_units:
+                if cgs_units:
+                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor) * cgs_conversion_factor
+                else:
+                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
+            else:
+                if cgs_units:
+                    return data_arr * cgs_conversion_factor
+                else:
+                    return data_arr
+
+
+    def fof(self,quantity,phys_units=True,cgs_units=False,verbose=False):
+
+        return self.catalogue_read(quantity,table='FOF',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
+
+    def subfind(self,quantity,phys_units=True,cgs_units=False,verbose=False):
+
+        return self.catalogue_read(quantity,table='Subhalo',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
+
 
 
     def select(self,groupnumber,parttype=0,region_size='r200',region_shape='sphere'):
         '''
+        Selection routine for CENTRALS only. Use select_subhalo for any arbitrary subhalo.
         Given a group number, selects a region of a given extent from that group's centre of potential.
         If region_shape is 'sphere' - select a spherical region of RADIUS region_size
         If region_shape is 'cube' - select a sub-box of SIDE LENGTH region_size
@@ -112,7 +212,7 @@ class snapshot(object):
         assert region_shape in ['sphere','cube'],'Please specify a valid region_shape (sphere or cube)'
 
         # Get the centre of potential from SUBFIND
-        centre = self.subfind_centres[groupnumber-1,:]
+        centre = self.central_COP[groupnumber-1,:]
         code_centre = centre * self.h/self.aexp # convert to h-less comoving code units
 
         # If the region size hasn't been given, set it to r200 (this is the default)
@@ -167,7 +267,7 @@ class snapshot(object):
         self.region_shape = region_shape
 
 
-    def load(self,quantity,verbose=False):
+    def load(self,quantity,phys_units=True,cgs_units=False,verbose=False):
         '''
         Now we have run "select" and established which particles are in our spherical region, we can load
         in anything we want!
@@ -185,6 +285,7 @@ class snapshot(object):
                     temp_data = f['/PartType%i/%s'%((self.parttype,quantity))]
                     h_conversion_factor = temp_data.attrs['h-scale-exponent']
                     aexp_conversion_factor = temp_data.attrs['aexp-scale-exponent']
+                    cgs_conversion_factor = temp_data.attrs['CGSConversionFactor']
 
             except:
                 print 'No particles of type ',self.parttype,' in snapfile ',snapfile_ind
@@ -198,13 +299,32 @@ class snapshot(object):
             print 'Loading ',quantity
             print 'h exponent = ',h_conversion_factor
             print 'a exponent = ',aexp_conversion_factor
+            print 'CGS conversion factor = ',cgs_conversion_factor
 
         # Load in the quantity
         loaded_data = self.snap.read_dataset(self.parttype,quantity)
 
-        return loaded_data[self.particle_selection] * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
+        dt = loaded_data.dtype
 
+        # Cast the data into a numpy array of the correct type
+        loaded_data = np.array(loaded_data,dtype=dt)
 
+        if np.issubdtype(dt,np.integer):
+            # Don't do any corrections if loading in integers
+            return loaded_data[self.particle_selection]
+
+        else:
+
+            if phys_units:
+                if cgs_units:
+                    return loaded_data[self.particle_selection] * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor) * cgs_conversion_factor
+                else:
+                    return loaded_data[self.particle_selection] * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
+            else:
+                if cgs_units:
+                    return loaded_data[self.particle_selection] * cgs_conversion_factor
+                else:
+                    return loaded_data[self.particle_selection]
 
 
     def get_Jvector(self,XYZ,aperture=0.03,CoMvelocity=True):
@@ -376,6 +496,49 @@ class snapshot(object):
         return abunds, num_ratios, Xe, Xi, mu
 
 
+    def attrs(self,quantity):
+        '''
+        Read the attributes of a given quantity in the snapshot and return a dictionary.
+        This function is unrelated to 'select' - you must give the full quantity name i.e. /PartType0/Coordinates
+        '''
+        pointto_snapfile = self.snapfile[:-6]
+        snapfile_ind = 0
+        while True:
+            try:
+                with h5.File(pointto_snapfile+str(snapfile_ind)+'.hdf5', 'r') as f:
+                    temp_data = f[quantity]
+                    return dict(temp_data.attrs)
+
+            except:
+                print 'No particles of type ',self.parttype,' in snapfile ',snapfile_ind
+                snapfile_ind += 1
+                continue
+            break
+        print 'No particles found'
+        exit()
+
+
+    def attrs_subfind(self,quantity):
+        '''
+        Read the attributes of a given quantity in the subfind catalogues and return a dictionary.
+        This function is unrelated to 'select' - you must give the full quantity name i.e. /PartType0/Coordinates
+        '''
+        snapfile_ind = 0
+        while True:
+            try:
+                with h5.File(self.subfindfile+str(snapfile_ind)+'.hdf5', 'r') as f:
+                    temp_data = f[quantity]
+                    return dict(temp_data.attrs)
+
+            except:
+                print 'No haloes of type ',self.parttype,' in snapfile ',snapfile_ind
+                snapfile_ind += 1
+                continue
+            break
+        print 'No haloes found'
+        exit()
+
+
 
 
 def attrs(quantity,
@@ -425,7 +588,7 @@ def attrs(quantity,
 
 def catalogue(filepath,groupnumbers,fields,gn_field='GroupNumber'):
     '''
-    For loading in catalogues by group number
+    For loading in pre-computed catalogues by group number
     '''
 
     loaded_data = {}
