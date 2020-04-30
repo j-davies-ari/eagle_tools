@@ -16,14 +16,7 @@ class snapshot(object):
                         pdata_type = 'SNAPSHOT',
                         data_location = '/hpcdata0/simulations/EAGLE/'):
 
-        # self.E = import_module('eagle')
         self.read = import_module('read_eagle')
-
-        # if visualisation:
-        #     self.sphviewer = import_module('sphviewer')
-        #     self.visualisation_enabled = True
-        # else:
-        #     self.visualisation_enabled = False
 
         self.sim = sim
         self.run = run
@@ -51,25 +44,6 @@ class snapshot(object):
         self.masstable = self.header['MassTable']/self.h
         boxsize = self.header['BoxSize']
         self.physical_boxsize = boxsize * self.aexp/self.h
-
-        # boxsize = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/BoxSize")
-        # self.NumPart = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/NumPart_Total")
-        # self.h = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/HubbleParam")
-        # self.aexp = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/ExpansionFactor")
-        # self.z = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/Redshift")
-        
-
-        # with h5.File(self.snapfile, 'r') as f:
-        #     self.masstable = f['Header'].attrs['MassTable']/self.h
-
-        # self.cosmology = {}
-        # self.cosmology['Omega0'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/Omega0")
-        # self.cosmology['OmegaBaryon'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/OmegaBaryon")
-        # self.cosmology['OmegaLambda'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/OmegaLambda")
-        # self.cosmology['HubbleParam'] = self.E.readAttribute(self.pdata_type, self.sim_path, tag, "/Header/HubbleParam")
-
-        # self.f_b_cosmic = self.cosmology['OmegaBaryon']/self.cosmology['Omega0']
-
         self.f_b_cosmic = self.header['OmegaBaryon']/self.header['Omega0']
 
         # Create an astropy.cosmology object for doing cosmological calculations.
@@ -82,9 +56,7 @@ class snapshot(object):
         self.first_subhalo = self.fof('FirstSubhaloID')
 
         # If the final FOF group is empty, it can be assigned a FirstSubhaloID which is out of range
-        # Mstar_30kpc = np.array(self.E.readArray("SUBFIND", self.sim_path, self.tag, "/Subhalo/ApertureMeasurements/Mass/030kpc"))
         self.subhalo_Mstar_30kpc = self.subfind('ApertureMeasurements/Mass/030kpc')
-
         max_subhalo = len(self.subhalo_Mstar_30kpc)
         self.first_subhalo[self.first_subhalo==max_subhalo] -= 1 # this line fixes the issue
 
@@ -101,28 +73,8 @@ class snapshot(object):
         self.r200 = self.fof('Group_R_Crit200')
         self.M200 = self.fof('Group_M_Crit200')
 
-
-        # self.subfind_all_gn = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/GroupNumber'))
-        # self.subfind_all_sgn = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/SubGroupNumber'))
-        # self.subfind_all_COP = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/CentreOfPotential'))
-
-        # self.subfind_centres = np.array(self.E.readArray('SUBFIND', self.sim_path, self.tag, 'Subhalo/CentreOfPotential'))[first_subhalo, :]
-        # self.bulk_velocity = np.array(self.E.readArray("SUBFIND",self.sim_path,self.tag,'Subhalo/Velocity'))[first_subhalo,:]
-        # self.r200 = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/Group_R_Crit200'))
-        # self.M200 = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/Group_M_Crit200'))
-
-
-
         self.have_run_select = False # This is set to True when a region has been selected - prevents crashes later on.
-
-
-    # def astropy_cosmology(self):
-    #     '''
-    #     Create an astropy.cosmology object for doing cosmological calculations based on the cosmology in this snapshot.
-    #     '''
-    #     return FlatLambdaCDM(100.*self.header['HubbleParam'],Om0=self.header['Omega0'],Ob0=self.header['OmegaBaryon'])
         
-
 
     def catalogue_read(self,quantity,table,phys_units=True,cgs_units=False,verbose=False):
         '''

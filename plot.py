@@ -4,7 +4,7 @@ import numpy as np
 import os as os_module
 import sys
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sys import argv, path, exit
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -64,7 +64,7 @@ class canvas(object):
 
         return inset_axes(a, width=height, height=height, loc=loc,borderpad=borderpad)
 
-    def line(self,xvals,yvals,axis=None,c='k',lw=1,ls='-',label=None):
+    def line(self,xvals,yvals,axis=None,c='k',lw=2,ls='-',label=None):
         a = self.set_axis(axis)
         a.plot(xvals,yvals,c=c,lw=lw,ls=ls,label=label)
 
@@ -126,7 +126,7 @@ class canvas(object):
     def save(self,name,dpi=200,rasterised=True,tight_layout=True):
         if tight_layout:
             plt.tight_layout()
-        plt.savefig(self.save_directory+name+'.pdf',dpi=dpi,rasterised=rasterised)
+        self.fig.savefig(self.save_directory+name+'.pdf',dpi=dpi,rasterised=rasterised)
 
     def show(self):
         plt.show(self.fig)
