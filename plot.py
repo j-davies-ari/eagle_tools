@@ -105,6 +105,7 @@ class canvas(object):
 
 
     def legend(self,axis=None,loc='lower right',ncol=1,size=15):
+
         a = self.set_axis(axis)
 
         if loc == 'above':
@@ -113,6 +114,7 @@ class canvas(object):
         elif loc == 'right_out':
             box = a.get_position()
             a.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
             a.legend(loc='center left', bbox_to_anchor=(1, 0.5),fancybox=True,prop={'size': size})
 
         else:
@@ -155,6 +157,7 @@ def get_bincentres(bin_edges):
 def NFW_profile(r_over_r200,c):
 
     return 1./(3. * (np.log(1+c)-c/(1.+c)) * r_over_r200 * ((1./c)+r_over_r200)**2)
+
 
 
 def get_moving_spearman_rank(xs,ys,colours,
