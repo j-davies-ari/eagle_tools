@@ -3,7 +3,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import eagle_tools
-from tqdm import tqdm
 import h5py as h5
 
 
@@ -37,9 +36,9 @@ for t, T in enumerate(temperatures):
         plt.plot(apec.energy_bins,np.log10(Ne_spectra[t,:]) - np.log10(apec.Ebinwidth),c='green',alpha=alpha[t]) 
         plt.plot(apec.energy_bins,np.log10(Fe_spectra[t,:]) - np.log10(apec.Ebinwidth),c='coral',alpha=alpha[t])
 
-plt.annotate(r'$T=10^{6.9-7.1}\,\mathrm{K}$',xy=(2.,-22.5),fontsize=12)
+plt.annotate(r'$T=10^{6.9-7.1}\,\mathrm{K}$',xy=(1.4,-22.5),fontsize=12)
 
-plt.xlim(0.,3.)
+plt.xlim(0.4,2.1)
 plt.ylim(-27.,-21.)
 plt.ylabel(r'$\log\left(d\lambda/dE_{\gamma}\right)\,[\mathrm{erg}\,\mathrm{cm}^{3}\,\mathrm{s}^{-1}\,\mathrm{keV}^{-1}]$',fontsize=16)
 plt.xlabel(r'$E_{\gamma}$ $[\mathrm{keV}]$',fontsize=16)
@@ -72,7 +71,7 @@ groupnumbers = Snapshot.groupnumbers[sample]
 Lx_halo = np.empty(len(groupnumbers))
 
 # Loop over group numbers
-for g in tqdm(range(len(groupnumbers))):
+for g in range(len(groupnumbers)):
 
     # Select all particles within r200
     Snapshot.select(groupnumbers[g],parttype=0,region_size='r200')
@@ -88,7 +87,7 @@ for g in tqdm(range(len(groupnumbers))):
     nosf = np.where(sfr==0.)[0]
 
     # Compute X-ray luminosities using emission module
-    Lx_particles = apec.xray_luminosity(temperature[nosf],density[nosf],mass[nosf],abundances[nosf])
+    Lx_particles = apec.xray_luminosity(temperature[nosf],density[nosf],mass[nosf],abundances[nosf,:])
 
     Lx_halo[g] = np.sum(Lx_particles)
 
