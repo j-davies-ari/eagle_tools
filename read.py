@@ -17,7 +17,7 @@ class snapshot(object):
                         pdata_type = 'SNAPSHOT',
                         data_location = '/hpcdata0/simulations/EAGLE/'):
 
-        self.read = import_module('read_eagle')
+        self.read = import_module('pyread_eagle')
 
         self.sim = sim
         self.run = run
@@ -103,27 +103,22 @@ class snapshot(object):
                         cgs_conversion_factor = data.attrs['CGSConversionFactor']
 
                         if verbose:
-                            print 'Loading ',quantity
-                            print 'h exponent = ',h_conversion_factor
-                            print 'a exponent = ',aexp_conversion_factor
-                            print 'CGS conversion factor = ',cgs_conversion_factor
+                            print('Loading ',quantity)
+                            print('h exponent = ',h_conversion_factor)
+                            print('a exponent = ',aexp_conversion_factor)
+                            print('CGS conversion factor = ',cgs_conversion_factor)
 
                         # Get the data type
                         dt = deepcopy(data.dtype)
 
                         data_arr = np.array(data,dtype=dt)
-                        # if quantity == 'GroupNumber':
-                        #     print data.dtype
-                        #     # print data_arr
-                        # exit()
                 
                     else:
                         data = f['/'+table+'/%s'%(quantity)]
                         data_arr = np.append(data_arr,np.array(data,dtype=dt),axis=0)
-                        # print data_arr                
 
             except:
-                # print 'Run out of files at ',file_ind
+                # print('Run out of files at ',file_ind)
                 break
 
             file_ind += 1
@@ -243,18 +238,18 @@ class snapshot(object):
                     cgs_conversion_factor = temp_data.attrs['CGSConversionFactor']
 
             except:
-                print 'No particles of type ',self.parttype,' in snapfile ',snapfile_ind
+                print('No particles of type ',self.parttype,' in snapfile ',snapfile_ind)
                 snapfile_ind += 1
                 continue
-            # print 'Particles of type ',self.parttype,' FOUND in snapfile ',snapfile_ind
-            # print h_conversion_factor, aexp_conversion_factor
+            # print('Particles of type ',self.parttype,' FOUND in snapfile ',snapfile_ind)
+            # print(h_conversion_factor, aexp_conversion_factor)
             break
 
         if verbose:
-            print 'Loading ',quantity
-            print 'h exponent = ',h_conversion_factor
-            print 'a exponent = ',aexp_conversion_factor
-            print 'CGS conversion factor = ',cgs_conversion_factor
+            print('Loading ',quantity)
+            print('h exponent = ',h_conversion_factor)
+            print('a exponent = ',aexp_conversion_factor)
+            print('CGS conversion factor = ',cgs_conversion_factor)
 
         # Load in the quantity
         loaded_data = self.snap.read_dataset(self.parttype,quantity)
@@ -470,11 +465,11 @@ class snapshot(object):
                     return dict(temp_data.attrs)
 
             except:
-                print 'No particles of type ',self.parttype,' in snapfile ',snapfile_ind
+                print('No particles of type ',self.parttype,' in snapfile ',snapfile_ind)
                 snapfile_ind += 1
                 continue
             break
-        print 'No particles found'
+        print('No particles found')
         exit()
 
 
@@ -491,11 +486,11 @@ class snapshot(object):
                     return dict(temp_data.attrs)
 
             except:
-                print 'No haloes of type ',self.parttype,' in snapfile ',snapfile_ind
+                print('No haloes of type ',self.parttype,' in snapfile ',snapfile_ind)
                 snapfile_ind += 1
                 continue
             break
-        print 'No haloes found'
+        print('No haloes found')
         exit()
 
 

@@ -59,7 +59,7 @@ class canvas(object):
         elif location in [1,2,3,4]:
             loc = location
         else:
-            print 'Please specify a valid inset axis location'
+            print('Please specify a valid inset axis location')
             exit()
 
         return inset_axes(a, width=height, height=height, loc=loc,borderpad=borderpad)

@@ -4,11 +4,11 @@ import pickle
 
 def query(username,password,query,outfile):
 
-    print 'Connecting to EAGLE database...'
+    print('Connecting to EAGLE database...')
     con = sql.connect(username, password=password)
-    print 'Connected.'
+    print('Connected.')
 
-    print 'Executing query...'
+    print('Executing query...')
 
     data = sql.execute_query(con, query)
 
@@ -21,4 +21,4 @@ def query(username,password,query,outfile):
         pickle.dump(out_data,output)
         output.close()
 
-    print 'Dumped output to ',outfile
+    print('Dumped output to ',outfile)
