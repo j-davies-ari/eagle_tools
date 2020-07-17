@@ -285,11 +285,11 @@ class cloudy(object):
         # If there isn't a CLOUDY output for our redshift, we need to linearly interpolate the tables
 
         # Load the CLOUDY output redshifts
-        z_list = np.loadtxt('/hpcdata5/simulations/EAGLE/BG_Tables/CoolingTables/redshifts.dat')[1:]
+        z_list = np.loadtxt('/hpcdata0/simulations/EAGLE/BG_Tables/CoolingTables/redshifts.dat')[1:]
 
         # If we have the right output, load it in and we're initialised
         if redshift in z_list:
-            with h5.File('/hpcdata5/simulations/EAGLE/BG_Tables/CoolingTables/z_%.3f.hdf5'%(z_list[z_list==redshift]),'r') as table:
+            with h5.File('/hpcdata0/simulations/EAGLE/BG_Tables/CoolingTables/z_%.3f.hdf5'%(z_list[z_list==redshift]),'r') as table:
 
                 self.solar_number_ratios = np.array(table['Header/Abundances/Solar_number_ratios'])
                 self.n_H_bins = np.array(table['Total_Metals/Hydrogen_density_bins'])
@@ -312,7 +312,7 @@ class cloudy(object):
             metal_cooling_0 = {}
             metal_cooling_1 = {}
 
-            with h5.File('/hpcdata5/simulations/EAGLE/BG_Tables/CoolingTables/z_%.3f.hdf5'%(z0),'r') as table:
+            with h5.File('/hpcdata0/simulations/EAGLE/BG_Tables/CoolingTables/z_%.3f.hdf5'%(z0),'r') as table:
 
                 # The bins are redshift-independent, so might as well initialise them here
                 self.solar_number_ratios = np.array(table['Header/Abundances/Solar_number_ratios'])
@@ -329,7 +329,7 @@ class cloudy(object):
                     metal_cooling_0[metal] = np.array(table[metal+'/Net_Cooling'])
 
 
-            with h5.File('/hpcdata5/simulations/EAGLE/BG_Tables/CoolingTables/z_%.3f.hdf5'%(z1),'r') as table:
+            with h5.File('/hpcdata0/simulations/EAGLE/BG_Tables/CoolingTables/z_%.3f.hdf5'%(z1),'r') as table:
 
                 # ..and at z1
                 metal_free_cooling_1= np.array(table['Metal_free/Net_Cooling'])

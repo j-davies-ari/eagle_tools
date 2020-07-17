@@ -68,13 +68,30 @@ class canvas(object):
         a = self.set_axis(axis)
         a.plot(xvals,yvals,c=c,lw=lw,ls=ls,label=label)
 
+    def line_bold(self,xvals,yvals,axis=None,c='k',lw=2,ls='-',label=None):
+        a = self.set_axis(axis)
+        a.plot(xvals,yvals,c='w',lw=lw*2,ls=ls,label=label)
+        a.plot(xvals,yvals,c=c,lw=lw,ls=ls,label=label)
+
     def shade(self,xvals,y0,y1,axis=None,c='k',alpha=0.5):
         a = self.set_axis(axis)
         a.fill_between(xvals,y0,y1,color=c,alpha=alpha)
 
     def scatter(self,xvals,yvals,axis=None,c='k',s=10,marker='o',label=None):
         a = self.set_axis(axis)
-        a.scatter(xvals,yvals,c=c,s=s,lw=0,marker=marker,label=label)
+        a.scatter(xvals,yvals,c=c,s=s,lw=0,marker=marker,label=label,rasterized=True)
+
+    def scatter_coloured(self,xvals,yvals,cvals,vmin=None,vmax=None,alpha=1,axis=None,cmap='YlOrRd',s=10,marker='o',label=None):
+        a = self.set_axis(axis)
+        if vmin is None:
+            vmin = np.amin(cvals)      
+        if vmax is None:
+            vmax = np.amax(cvals)      
+        return a.scatter(xvals,yvals,c=cvals,cmap=cmap,vmin=vmin,vmax=vmax,s=s,lw=0.4,edgecolor='gray',rasterized=True,alpha=alpha)
+
+    def scatter_hollow(self,xvals,yvals,axis=None,c='k',s=10,marker='o',label=None):
+        a = self.set_axis(axis)
+        a.scatter(xvals,yvals,edgecolors=c,s=s,marker=marker,facecolors='none',rasterized=True)
 
     def xlabel(self,label,axis=None,fontsize=22,loc='bottom'):
         assert loc in ['top','bottom'],'Please specify a valid location (bottom or top)'
@@ -206,7 +223,7 @@ def get_moving_spearman_rank(xs,ys,colours,
         stops = starts + window_sizes[0]
         centres = starts + window_sizes[0]/2
 
-        for i in range(len(window_sizes)): # Need to 
+        for i in range(len(window_sizes)): 
 
             if i == 0:
                 continue

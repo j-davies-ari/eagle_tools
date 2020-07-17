@@ -1,10 +1,8 @@
 
-##### WIP DO NOT USE ########
-
 import eagleSqlTools as sql
 import pickle
 
-def database_query(username,password,query,outfile):
+def query(username,password,query,outfile):
 
     print 'Connecting to EAGLE database...'
     con = sql.connect(username, password=password)

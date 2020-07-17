@@ -3,6 +3,7 @@
 import numpy as np
 
 import h5py as h5
+import sys
 from sys import exit
 from importlib import import_module
 from astropy.cosmology import FlatLambdaCDM
@@ -56,7 +57,7 @@ class snapshot(object):
         self.first_subhalo = self.fof('FirstSubhaloID')
 
         # If the final FOF group is empty, it can be assigned a FirstSubhaloID which is out of range
-        self.subhalo_Mstar_30kpc = self.subfind('ApertureMeasurements/Mass/030kpc')
+        self.subhalo_Mstar_30kpc = self.subfind('ApertureMeasurements/Mass/030kpc')[:,4]
         max_subhalo = len(self.subhalo_Mstar_30kpc)
         self.first_subhalo[self.first_subhalo==max_subhalo] -= 1 # this line fixes the issue
 
@@ -72,6 +73,8 @@ class snapshot(object):
         self.central_bulk_velocity = self.subhalo_bulk_velocity[self.first_subhalo,:]
         self.r200 = self.fof('Group_R_Crit200')
         self.M200 = self.fof('Group_M_Crit200')
+        self.nsub = self.fof('NumOfSubhalos')
+        self.groupnumbers = np.arange(len(self.M200)) + 1
 
         self.have_run_select = False # This is set to True when a region has been selected - prevents crashes later on.
         
@@ -369,8 +372,8 @@ class snapshot(object):
         # First make sure that select has been run
         assert self.have_run_select == True,'Please run "select" before trying to load anything in.'
 
-        if not sphviewer in sys.modules:
-            self.sphviewer = import_module('sphviewer')
+        if not 'sphviewer' in globals():
+            sphviewer = import_module('sphviewer')
 
         # # Make sure that imaging is enabled
         # assert self.visualisation_enabled == True,'Please enable visualisation when initialising snapshot'
@@ -385,21 +388,26 @@ class snapshot(object):
         assert len(pos[:,0])==len(quantity),'Size mismatch between input quantity and particle selection'
 
         if self.parttype in [1,2,3]:
-            Particles = self.sphviewer.Particles(pos, quantity, hsml=None, nb=58)
+            Particles = sphviewer.Particles(pos, quantity, hsml=None, nb=58)
         else:
             hsml = self.load('SmoothingLength')[selection]
             if max_hsml is not None:
                 hsml[hsml>max_hsml] = max_hsml
-            Particles = self.sphviewer.Particles(pos, quantity, hsml=hsml)
+            Particles = sphviewer.Particles(pos, quantity, hsml=hsml)
 
-        Scene = self.sphviewer.Scene(Particles)
+        Scene = sphviewer.Scene(Particles)
 
         if self.region_shape == 'cube':
             default_extent = self.region_size/2.
         else:
             default_extent = self.region_size
 
-        Scene.update_camera(x=0.,y=0.,z=0.,r='infinity',extent=[-default_extent, default_extent, -default_extent, default_extent], xsize=1024, ysize=1024)
+        if camera_position is not None:
+            camera_position -= self.this_centre
+        else:
+            camera_position = [0.,0.,0.]
+
+        Scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=[-default_extent, default_extent, -default_extent, default_extent], xsize=1024, ysize=1024)
 
         return Scene
 
