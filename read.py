@@ -57,23 +57,23 @@ class snapshot(object):
         self.first_subhalo = self.fof('FirstSubhaloID')
 
         # If the final FOF group is empty, it can be assigned a FirstSubhaloID which is out of range
-        self.subhalo_Mstar_30kpc = self.subfind('ApertureMeasurements/Mass/030kpc')[:,4]
-        max_subhalo = len(self.subhalo_Mstar_30kpc)
+        self.subhalo_COP = self.subfind('CentreOfPotential')
+        max_subhalo = len(self.subhalo_COP[:,0])
         self.first_subhalo[self.first_subhalo==max_subhalo] -= 1 # this line fixes the issue
 
         # Group number and subgroup number for all subhaloes
-        self.subhalo_gn = self.subfind('GroupNumber')
-        self.subhalo_sgn = self.subfind('SubGroupNumber')
-        self.subhalo_COP = self.subfind('CentreOfPotential')
-        self.subhalo_bulk_velocity = self.subfind('Velocity')
+        # self.subhalo_gn = self.subfind('GroupNumber')
+        # self.subhalo_sgn = self.subfind('SubGroupNumber')
+        # self.subhalo_COP = self.subfind('CentreOfPotential')
+        # self.subhalo_bulk_velocity = self.subfind('Velocity')
 
         # Useful quantities for centrals only
-        self.central_Mstar_30kpc = self.subhalo_Mstar_30kpc[self.first_subhalo]
+        # self.central_Mstar_30kpc = self.subhalo_Mstar_30kpc[self.first_subhalo]
         self.central_COP = self.subhalo_COP[self.first_subhalo,:]
-        self.central_bulk_velocity = self.subhalo_bulk_velocity[self.first_subhalo,:]
+        # self.central_bulk_velocity = self.subhalo_bulk_velocity[self.first_subhalo,:]
         self.r200 = self.fof('Group_R_Crit200')
         self.M200 = self.fof('Group_M_Crit200')
-        self.nsub = self.fof('NumOfSubhalos')
+        # self.nsub = self.fof('NumOfSubhalos')
         self.groupnumbers = np.arange(len(self.M200)) + 1
 
         self.have_run_select = False # This is set to True when a region has been selected - prevents crashes later on.
@@ -175,6 +175,14 @@ class snapshot(object):
 
         code_region_size = region_size * self.h/self.aexp # convert to h-full comoving code units
 
+        self.parttype = parttype
+        self.this_M200 = self.M200[groupnumber-1]
+        self.this_r200 = self.r200[groupnumber-1]
+        self.this_groupnumber = groupnumber
+        self.this_centre = centre
+        self.region_size = region_size
+        self.region_shape = region_shape
+
         # Open snapshot
         self.snap = self.read.EagleSnapshot(self.snapfile)
 
@@ -187,9 +195,14 @@ class snapshot(object):
                             code_centre[2]+code_region_size)
 
         # Now we just need to establish which of the particles we loaded in are within the spherical region.
-
         pos = self.snap.read_dataset(parttype,'Coordinates') * self.aexp/self.h
-            
+
+        if len(pos) == 0:
+            # If no particles are found, return an empty array
+            self.particle_selection = []
+            self.have_run_select = True
+            return
+
         # Wrap the box
         pos -= centre
         pos+=self.physical_boxsize/2.
@@ -204,17 +217,10 @@ class snapshot(object):
 
         else:
             self.particle_selection = np.where((np.absolute(pos[:,0])<region_size/2.)&(np.absolute(pos[:,1])<region_size/2.)&(np.absolute(pos[:,2])<region_size/2.))[0] # make the mask  
-
-
-        self.parttype = parttype
+        
         self.have_run_select = True
 
-        self.this_M200 = self.M200[groupnumber-1]
-        self.this_r200 = self.r200[groupnumber-1]
-        self.this_groupnumber = groupnumber
-        self.this_centre = centre
-        self.region_size = region_size
-        self.region_shape = region_shape
+        
 
 
     def load(self,quantity,phys_units=True,cgs_units=False,verbose=False):

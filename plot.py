@@ -10,7 +10,14 @@ from sys import argv, path, exit
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.stats import spearmanr
 
-
+class config(object): # Sets the font of axis labels in your code. You can also use plotparams.columnwidth etc for sizes.
+    def __init__(self):
+        params = {'axes.labelsize': 12, 'xtick.labelsize': 13, 'ytick.labelsize': 13, 'lines.linewidth' : 2, 'axes.titlesize' : 17, 'font.family' : 'serif'}
+        plt.rcParams.update(params)
+        
+        self.columnwidth = 240./72.27
+        self.textwidth = 504.0/72.27
+        self.textheight = 682.0/72.27
 
 class canvas(object):
 
@@ -210,7 +217,7 @@ def get_moving_spearman_rank(xs,ys,colours,
 
     '''
 
-    assert all(xs[i] <= xs[i+1] for i in xrange(len(xs)-1)), "xs MUST be in ascending order."
+    assert all(xs[i] <= xs[i+1] for i in range(len(xs)-1)), "xs MUST be in ascending order."
 
     if isinstance(window_sizes,list):
 
@@ -219,9 +226,9 @@ def get_moving_spearman_rank(xs,ys,colours,
 
         # Make the moving window by defining 'starts' and 'stops'.
 
-        starts = np.arange(len(xs[xs<transition_points[0]])-(window_sizes[0]/2)-1,step=window_steps[0])
+        starts = np.arange(len(xs[xs<transition_points[0]])-(window_sizes[0]//2)-1,step=window_steps[0])
         stops = starts + window_sizes[0]
-        centres = starts + window_sizes[0]/2
+        centres = starts + window_sizes[0]//2
 
         for i in range(len(window_sizes)): 
 
@@ -229,13 +236,13 @@ def get_moving_spearman_rank(xs,ys,colours,
                 continue
 
             if i == len(window_sizes)-1:
-                starts_chunk = np.arange(len(xs[xs<transition_points[i-1]])-(window_sizes[i]/2),len(xs)-window_sizes[i],step=window_steps[i])
+                starts_chunk = np.arange(len(xs[xs<transition_points[i-1]])-(window_sizes[i]//2),len(xs)-window_sizes[i],step=window_steps[i])
             else:
-                starts_chunk = np.arange(len(xs[xs<transition_points[i-1]])-(window_sizes[i]/2),len(xs[xs<transition_points[i]])-(window_sizes[i]/2)-1,step=window_steps[i])
+                starts_chunk = np.arange(len(xs[xs<transition_points[i-1]])-(window_sizes[i]//2),len(xs[xs<transition_points[i]])-(window_sizes[i]//2)-1,step=window_steps[i])
 
             starts = np.hstack((starts,starts_chunk))
             stops = np.hstack((stops,starts_chunk+window_sizes[i]))
-            centres = np.hstack((centres,starts_chunk+window_sizes[i]/2))
+            centres = np.hstack((centres,starts_chunk+window_sizes[i]//2))
 
     elif isinstance(window_sizes,int):
 
@@ -245,7 +252,7 @@ def get_moving_spearman_rank(xs,ys,colours,
 
         starts = np.arange(len(xs)-window_sizes,step=window_steps)
         stops = starts + window_sizes
-        centres = starts + window_sizes/2
+        centres = starts + window_sizes//2
 
     else:
         raise ValueError('Please give a valid window size(s) (int or list of ints)')

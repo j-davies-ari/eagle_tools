@@ -1,4 +1,63 @@
 import numpy as np
+import sys
+
+def mpiprint(string):
+    
+    print(string)
+    sys.stdout.flush()
+
+def makenp(pylist):
+    return np.asarray(pylist)
+
+def soft_comov(z,sim): # Returns the comoving softening length for any redshift in the EAGLE boxes
+    a = 1./(1.+z)
+    if sim=='L0025N0376' or sim=='L0050N0752' or sim=='L0100N1504':
+        e_com = 2.66
+        e_max_phys = 0.7
+    elif sim == 'L0025N0752':
+        e_com = 1.33
+        e_max_phys = 0.35
+    else:
+        raise NameError('Softening for this simulation not known yet!')
+    if e_com < e_max_phys/a:
+        e = e_com
+    else:
+        e = e_max_phys/a
+    return e
+
+def soft_phys(z,sim):
+    ecom = soft_comov(z,sim)
+    return 1./(1.+z) * ecom
+
+def get_binedges(z_store): # Creates an array of bin edges for variable-width histogram plotting, given the bin centres
+    bins = []
+    bins.append(z_store[0]-(z_store[1]-z_store[0])/2)
+    for j in range(len(z_store)):
+        if j+1 == len(z_store):
+            break
+        else:
+            bins.append(z_store[j]+(z_store[j+1]-z_store[j])/2)
+    bins.append(z_store[-1]+(z_store[-1]-z_store[-2])/2)
+    
+    return bins
+    
+def get_bincentres(binedges): # Finds the centre points of a set of bin edges
+    bincentres = []
+    for i in range(len(binedges)):
+        if i+1 == len(binedges):
+            break
+        else:
+            bincentres.append((binedges[i+1]+binedges[i])/2.)
+    return np.array(bincentres)
+    
+def get_binsizes(binedges):
+    binsizes = []
+    for i in range(len(binedges)):
+        if i+1 == len(binedges):
+            break
+        else:
+            binsizes.append(binedges[i+1]-binedges[i])
+    return binsizes
 
 class constants(object):
     '''
