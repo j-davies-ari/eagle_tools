@@ -1,3 +1,3 @@
-__all__ = ["read", "read_wholebox", "plot", "utilities", "database","emission"]
+__all__ = ["read", "plot", "utilities", "database","emission"]
 
 from . import *
