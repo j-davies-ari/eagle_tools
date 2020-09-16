@@ -30,10 +30,16 @@ class canvas(object):
 
         self.default_axis = None
 
+        self.fig_dimensions = [figsize[1],figsize[0]] # rows, columns
+
         self.fig = plt.figure(figsize=figsize)
         self.grid = plt.GridSpec(figsize[1], figsize[0], hspace=hspace, wspace=wspace)
 
-    def add_axis(self,span,set_default=False,sharex=None,sharey=None):
+    def add_axis(self,span=None,set_default=False,sharex=None,sharey=None):
+
+        if span is None:
+            span = self.grid[:,:]
+            set_default = True
 
         added_axis = self.fig.add_subplot(span,sharex=sharex,sharey=sharey)
 

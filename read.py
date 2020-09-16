@@ -18,6 +18,7 @@ class snapshot(object):
                         data_location = '/hpcdata0/simulations/EAGLE/'):
 
         self.read = import_module('pyread_eagle')
+        # self.read = import_module('read_eagle')
 
         self.sim = sim
         self.run = run
@@ -153,7 +154,7 @@ class snapshot(object):
 
     def select(self,groupnumber,parttype=0,region_size='r200',region_shape='sphere'):
         '''
-        Selection routine for CENTRALS only. Use select_subhalo for any arbitrary subhalo.
+        Selection routine for CENTRALS only.
         Given a group number, selects a region of a given extent from that group's centre of potential.
         If region_shape is 'sphere' - select a spherical region of RADIUS region_size
         If region_shape is 'cube' - select a sub-box of SIDE LENGTH region_size
@@ -294,7 +295,7 @@ class snapshot(object):
         # Restrict particles
         extract = (distancesall<aperture)
         particles = particlesall[extract].copy()
-        distances = distancesall[extract].copy()
+        # distances = distancesall[extract].copy()
         Mass = np.sum(particles[:,3])
         if CoMvelocity:
             # Compute CoM velocty & correct
