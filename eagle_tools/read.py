@@ -3,7 +3,6 @@
 import numpy as np
 
 import h5py as h5
-import sys
 from sys import exit
 from importlib import import_module
 from astropy.cosmology import FlatLambdaCDM
@@ -555,7 +554,7 @@ def catalogue(filepath,groupnumbers,fields,gn_field='GroupNumber'):
 
     loaded_data = {}
 
-    if isinstance(fields,basestring): # If only one field, put into a list to simplify code
+    if isinstance(fields,str): # If only one field, put into a list to simplify code
         fields = [fields,]
 
     with h5.File(filepath, 'r') as f:

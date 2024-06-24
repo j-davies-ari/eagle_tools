@@ -2,7 +2,6 @@
 
 import numpy as np
 import h5py as h5
-from sys import exit
 import math
 from copy import deepcopy
 
