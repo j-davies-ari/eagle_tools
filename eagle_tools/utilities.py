@@ -59,7 +59,7 @@ def get_binsizes(binedges):
             binsizes.append(binedges[i+1]-binedges[i])
     return binsizes
 
-class constants(object):
+class Constants(object):
     '''
     Useful constants for working with EAGLE data
     '''

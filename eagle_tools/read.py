@@ -8,7 +8,9 @@ from importlib import import_module
 from astropy.cosmology import FlatLambdaCDM
 from copy import deepcopy
 
-class snapshot(object):
+from pyread_eagle import EagleSnapshot
+
+class Snapshot(object):
 
     def __init__(self,sim = 'L0100N1504',
                         run = 'REFERENCE',
@@ -16,23 +18,23 @@ class snapshot(object):
                         pdata_type = 'SNAPSHOT',
                         data_location = '/hpcdata0/simulations/EAGLE/'):
 
-        self.read = import_module('pyread_eagle')
-        # self.read = import_module('read_eagle')
-
         self.sim = sim
         self.run = run
         self.tag = tag
         self.pdata_type = pdata_type
-        self.sim_path = data_location + sim + '/' + run + '/data/'
+        self.sim_path = f"{data_location}/{sim}/{run}/data"
 
         # Create strings to point the read module to the first snapshot/particle/subfind files
         if pdata_type == 'SNAPSHOT':
-            self.snapfile = self.sim_path + 'snapshot_'+tag+'/snap_'+tag+'.0.hdf5'
+            # self.snapfile = self.sim_path + 'snapshot_'+tag+'/snap_'+tag+'.0.hdf5'
+            self.snapfile = f"{self.sim_path}/snapshot_{tag}/snap_{tag}.0.hdf5"
         elif pdata_type == 'PARTDATA':
-            self.snapfile = self.sim_path + 'particledata_'+tag+'/eagle_subfind_particles_'+tag+'.0.hdf5'
+            # self.snapfile = self.sim_path + 'particledata_'+tag+'/eagle_subfind_particles_'+tag+'.0.hdf5'
+            self.snapfile = f"{self.sim_path}/particledata_{tag}/eagle_subfind_particles_{tag}.0.hdf5"
         else:
             raise TypeError('Please pick a valid pdata_type (SNAPSHOT or PARTDATA)')
-        self.subfindfile = self.sim_path + 'groups_'+tag+'/eagle_subfind_tab_' + tag + '.'
+        # self. = self.sim_path + 'groups_'+tag+'/eagle_subfind_tab_' + tag + '.'
+        self.subfind_root = f"{self.sim_path}/groups_{tag}/eagle_subfind_tab_{tag}"
 
         # Get volume information. Note that header is taken from one file only, so quantities such as 'NumPart_ThisFile' are not useful.
         self.header = self.attrs('Header')
@@ -91,7 +93,7 @@ class snapshot(object):
         while True:
 
             try:
-                with h5.File(self.subfindfile+str(file_ind)+'.hdf5', 'r') as f:
+                with h5.File(f"{self.subfind_root}.{file_ind}.hdf5", 'r') as f:
                     
                     if file_ind == 0:
                         
@@ -184,7 +186,7 @@ class snapshot(object):
         self.region_shape = region_shape
 
         # Open snapshot
-        self.snap = self.read.EagleSnapshot(self.snapfile)
+        self.snap = EagleSnapshot(self.snapfile)
 
         # Select region of interest - this isolates the content of 'snap' to only this region for future use.
         self.snap.select_region(code_centre[0]-code_region_size,
