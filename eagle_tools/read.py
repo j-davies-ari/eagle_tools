@@ -7,6 +7,7 @@ from sys import exit
 from importlib import import_module
 from astropy.cosmology import FlatLambdaCDM
 from copy import deepcopy
+from warnings import warn
 
 from pyread_eagle import EagleSnapshot
 
@@ -79,78 +80,14 @@ class Snapshot(object):
         self.groupnumbers = np.arange(len(self.M200)) + 1
 
         self.have_run_select = False # This is set to True when a region has been selected - prevents crashes later on.
-        
-
-    def catalogue_read(self,quantity,table,phys_units=True,cgs_units=False,verbose=False):
-        '''
-        Read in FOF or SUBFIND catalogues.
-        The user may prefer to use the wrapper functions 'fof' and 'subfind' rather than specifying 'table' here.
-        '''
-
-        assert table in ['FOF','Subhalo'],'table must be either FOF or Subhalo'
-
-        file_ind = 0
-        while True:
-
-            try:
-                with h5.File(f"{self.subfind_root}.{file_ind}.hdf5", 'r') as f:
-                    
-                    if file_ind == 0:
-                        
-                        data = f['/'+table+'/%s'%(quantity)]
-
-                        # Grab conversion factors from first file
-                        h_conversion_factor = data.attrs['h-scale-exponent']
-                        aexp_conversion_factor = data.attrs['aexp-scale-exponent']
-                        cgs_conversion_factor = data.attrs['CGSConversionFactor']
-
-                        if verbose:
-                            print('Loading ',quantity)
-                            print('h exponent = ',h_conversion_factor)
-                            print('a exponent = ',aexp_conversion_factor)
-                            print('CGS conversion factor = ',cgs_conversion_factor)
-
-                        # Get the data type
-                        dt = deepcopy(data.dtype)
-
-                        data_arr = np.array(data,dtype=dt)
-                
-                    else:
-                        data = f['/'+table+'/%s'%(quantity)]
-                        data_arr = np.append(data_arr,np.array(data,dtype=dt),axis=0)
-
-            except:
-                # print('Run out of files at ',file_ind)
-                break
-
-            file_ind += 1
-        
-        if np.issubdtype(dt,np.integer):
-            # Don't do any corrections if loading in integers
-            return data_arr
-
-        else:
-
-            if phys_units:
-                if cgs_units:
-                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor) * cgs_conversion_factor
-                else:
-                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
-            else:
-                if cgs_units:
-                    return data_arr * cgs_conversion_factor
-                else:
-                    return data_arr
 
 
     def fof(self,quantity,phys_units=True,cgs_units=False,verbose=False):
+        return self._catalogue_read(quantity,table='FOF',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
 
-        return self.catalogue_read(quantity,table='FOF',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
 
     def subfind(self,quantity,phys_units=True,cgs_units=False,verbose=False):
-
-        return self.catalogue_read(quantity,table='Subhalo',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
-
+        return self._catalogue_read(quantity,table='Subhalo',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
 
 
     def select(self,groupnumber,parttype=0,region_size='r200',region_shape='sphere'):
@@ -212,20 +149,24 @@ class Snapshot(object):
         pos-=self.physical_boxsize/2.
 
         # Create a mask to the region we want, for future use.
-
         if region_shape == 'sphere':
             r2 = np.einsum('...j,...j->...',pos,pos) # get the radii from the centre
             self.particle_selection = np.where(r2<region_size**2)[0] # make the mask   
-
         else:
             self.particle_selection = np.where((np.absolute(pos[:,0])<region_size/2.)&(np.absolute(pos[:,1])<region_size/2.)&(np.absolute(pos[:,2])<region_size/2.))[0] # make the mask  
         
         self.have_run_select = True
 
-        
-
-
-    def load(self,quantity,phys_units=True,cgs_units=False,verbose=False):
+    
+    def load(self,
+        quantity,
+        phys_units=True,
+        cgs_units=False,
+        verbose=False,
+        wrap_coords = True,
+        align_coords = None,
+        align_coords_aperture=0.01
+    ):
         '''
         Now we have run "select" and established which particles are in our spherical region, we can load
         in anything we want!
@@ -244,13 +185,10 @@ class Snapshot(object):
                     h_conversion_factor = temp_data.attrs['h-scale-exponent']
                     aexp_conversion_factor = temp_data.attrs['aexp-scale-exponent']
                     cgs_conversion_factor = temp_data.attrs['CGSConversionFactor']
-
             except:
                 print('No particles of type ',self.parttype,' in snapfile ',snapfile_ind)
                 snapfile_ind += 1
                 continue
-            # print('Particles of type ',self.parttype,' FOUND in snapfile ',snapfile_ind)
-            # print(h_conversion_factor, aexp_conversion_factor)
             break
 
         if verbose:
@@ -260,110 +198,41 @@ class Snapshot(object):
             print('CGS conversion factor = ',cgs_conversion_factor)
 
         # Load in the quantity
-        loaded_data = self.snap.read_dataset(self.parttype,quantity)
-
-        dt = loaded_data.dtype
+        loaded_data = self.snap.read_dataset(self.parttype,quantity)[self.particle_selection]
 
         # Cast the data into a numpy array of the correct type
+        dt = loaded_data.dtype
         loaded_data = np.array(loaded_data,dtype=dt)
 
         if np.issubdtype(dt,np.integer):
             # Don't do any corrections if loading in integers
             return loaded_data[self.particle_selection]
-
         else:
 
             if phys_units:
-                if cgs_units:
-                    return loaded_data[self.particle_selection] * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor) * cgs_conversion_factor
-                else:
-                    return loaded_data[self.particle_selection] * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
-            else:
-                if cgs_units:
-                    return loaded_data[self.particle_selection] * cgs_conversion_factor
-                else:
-                    return loaded_data[self.particle_selection]
+                loaded_data *= np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
+
+            if cgs_units:
+                loaded_data *= cgs_conversion_factor
+
+        if quantity == 'Coordinates':
+            loaded_data = self._transform_coordinates(
+                                                    loaded_data,
+                                                    wrap_coords = wrap_coords,
+                                                    align_coords = align_coords,
+                                                    align_coords_aperture = align_coords_aperture
+                                                    )
+            
+        return loaded_data
 
 
-    def get_Jvector(self,XYZ,aperture=0.03,CoMvelocity=True):
+    def load_coordinates(self,align=None,align_aperture=0.01,**kwargs):
+        """
+        Retained for compatibility
+        """
+        warn(f"load_coordinates is deprecated and unnecessary. Coord wrapping now occurs automatically in `load()`.",DeprecationWarning)
 
-        Vxyz = self.load('Velocity')
-        Jmass = self.load('Mass')
-
-        particlesall = np.vstack([XYZ.T,Jmass,Vxyz.T]).T
-        # Compute distances
-        distancesall = np.linalg.norm(particlesall[:,:3],axis=1)
-        # Restrict particles
-        extract = (distancesall<aperture)
-        particles = particlesall[extract].copy()
-        # distances = distancesall[extract].copy()
-        Mass = np.sum(particles[:,3])
-        if CoMvelocity:
-            # Compute CoM velocty & correct
-            dvVmass = np.nan_to_num(np.sum(particles[:,3][:,np.newaxis]*particles[:,4:7],axis=0)/Mass)
-            particlesall[:,4:7]-=dvVmass
-            particles[:,4:7]-=dvVmass
-        smomentums = np.cross(particles[:,:3],particles[:,4:7])
-        momentum = np.sum(particles[:,3][:,np.newaxis]*smomentums,axis=0)
-        Momentum = np.linalg.norm(momentum)
-        # Compute cylindrical quantities
-        zaxis = (momentum/Momentum)
-        return zaxis
-
-
-    def load_coordinates(self,align=None,alignaperture=0.01):
-        '''
-        Loads coordinates and wraps the box
-        '''
-
-        # First make sure that select has been run
-        assert self.have_run_select == True,'Please run "select" before trying to load anything in.'
-
-        assert align in ['face','edge',None],'Please pick a valid alignment'
-
-        coords = self.load('Coordinates')
-
-        # Centre and wrap the box
-        coords -= self.this_centre
-        coords+=self.physical_boxsize/2.
-        coords%=self.physical_boxsize
-        coords-=self.physical_boxsize/2.
-
-        if align is not None:
-
-            # Generate the new basis vectors
-            J_vec = self.get_Jvector(coords,aperture=alignaperture)
-
-            e3= J_vec #already normalised if using kinematics diagnostics
-
-            e2 = np.ones(3)  # take a random vector
-            e2 -= e2.dot(e3) * e3       # make it orthogonal to k
-            e2 /= np.linalg.norm(e2)  # normalize it
-            e1 = np.cross(e3,e2)
-            e1 /= np.linalg.norm(e1)
-
-            transformation_matrix = np.stack((e1.T,e2.T,e3.T), axis = 1 ).T
-
-            for i in range(len(coords)):
-
-                coords[i,:] = np.dot(transformation_matrix,coords[i,:])
-
-            if align == 'face':
-
-                return coords
-
-            elif align == 'edge':
-                
-                coords_edge = np.empty(np.shape(coords))
-
-                coords_edge[:,0] = coords[:,0]
-                coords_edge[:,1] = coords[:,2]
-                coords_edge[:,2] = coords[:,1]
-                
-                return coords_edge
-
-        else:
-            return coords
+        return self.load('Coordinates',align_coords=align,align_coords_aperture=align_aperture,**kwargs)
 
 
     def set_scene(self,quantity,camera_position=None,max_hsml=None,align=None,selection=None):
@@ -500,6 +369,152 @@ class Snapshot(object):
             break
         print('No haloes found')
         exit()
+
+
+    def _catalogue_read(self,quantity,table,phys_units=True,cgs_units=False,verbose=False):
+        '''
+        Read in FOF or SUBFIND catalogues.
+        The user should use the wrapper functions 'fof' and 'subfind' rather than specifying 'table' here.
+        '''
+
+        assert table in ['FOF','Subhalo'],'table must be either FOF or Subhalo'
+
+        file_ind = 0
+        while True:
+
+            try:
+                with h5.File(f"{self.subfind_root}.{file_ind}.hdf5", 'r') as f:
+                    
+                    if file_ind == 0:
+                        
+                        data = f['/'+table+'/%s'%(quantity)]
+
+                        # Grab conversion factors from first file
+                        h_conversion_factor = data.attrs['h-scale-exponent']
+                        aexp_conversion_factor = data.attrs['aexp-scale-exponent']
+                        cgs_conversion_factor = data.attrs['CGSConversionFactor']
+
+                        if verbose:
+                            print('Loading ',quantity)
+                            print('h exponent = ',h_conversion_factor)
+                            print('a exponent = ',aexp_conversion_factor)
+                            print('CGS conversion factor = ',cgs_conversion_factor)
+
+                        # Get the data type
+                        dt = deepcopy(data.dtype)
+
+                        data_arr = np.array(data,dtype=dt)
+                
+                    else:
+                        data = f['/'+table+'/%s'%(quantity)]
+                        data_arr = np.append(data_arr,np.array(data,dtype=dt),axis=0)
+
+            except:
+                # print('Run out of files at ',file_ind)
+                break
+
+            file_ind += 1
+        
+        if np.issubdtype(dt,np.integer):
+            # Don't do any corrections if loading in integers
+            return data_arr
+
+        else:
+
+            if phys_units:
+                if cgs_units:
+                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor) * cgs_conversion_factor
+                else:
+                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
+            else:
+                if cgs_units:
+                    return data_arr * cgs_conversion_factor
+                else:
+                    return data_arr
+
+    def _get_Jvector(self,XYZ,aperture=0.03,CoMvelocity=True):
+
+        Vxyz = self.load('Velocity')
+        Jmass = self.load('Mass')
+
+        particlesall = np.vstack([XYZ.T,Jmass,Vxyz.T]).T
+        # Compute distances
+        distancesall = np.linalg.norm(particlesall[:,:3],axis=1)
+        # Restrict particles
+        extract = (distancesall<aperture)
+        particles = particlesall[extract].copy()
+        # distances = distancesall[extract].copy()
+        Mass = np.sum(particles[:,3])
+        if CoMvelocity:
+            # Compute CoM velocty & correct
+            dvVmass = np.nan_to_num(np.sum(particles[:,3][:,np.newaxis]*particles[:,4:7],axis=0)/Mass)
+            particlesall[:,4:7]-=dvVmass
+            particles[:,4:7]-=dvVmass
+        smomentums = np.cross(particles[:,:3],particles[:,4:7])
+        momentum = np.sum(particles[:,3][:,np.newaxis]*smomentums,axis=0)
+        Momentum = np.linalg.norm(momentum)
+        # Compute cylindrical quantities
+        zaxis = (momentum/Momentum)
+        return zaxis
+
+
+    def _transform_coordinates(self,
+            coords,
+            wrap_coords = True,
+            align_coords=None,
+            align_coords_aperture=0.01
+    ):
+        '''
+        Wraps coordinates and optionally transforms them to align face-on or edge-on.
+        '''
+
+        if wrap_coords:
+
+            # Centre and wrap the box
+            coords -= self.this_centre
+            coords+=self.physical_boxsize/2.
+            coords%=self.physical_boxsize
+            coords-=self.physical_boxsize/2.
+
+        if align_coords is not None:
+
+            assert align_coords in ['face','edge',None],'Please pick a valid alignment'
+
+            # Generate the new basis vectors
+            J_vec = self._get_Jvector(coords,aperture=align_coords_aperture)
+
+            e3= J_vec #already normalised if using kinematics diagnostics
+
+            e2 = np.ones(3)  # take a random vector
+            e2 -= e2.dot(e3) * e3       # make it orthogonal to k
+            e2 /= np.linalg.norm(e2)  # normalize it
+            e1 = np.cross(e3,e2)
+            e1 /= np.linalg.norm(e1)
+
+            transformation_matrix = np.stack((e1.T,e2.T,e3.T), axis = 1 ).T
+
+            #JD: this really sucks, I'm sure this can be vectorised
+            for i in range(len(coords)):
+
+                coords[i,:] = np.dot(transformation_matrix,coords[i,:])
+
+            if align_coords == 'face':
+
+                return coords
+
+            # This also sucks
+            elif align_coords == 'edge':
+                
+                coords_edge = np.empty(np.shape(coords))
+
+                coords_edge[:,0] = coords[:,0]
+                coords_edge[:,1] = coords[:,2]
+                coords_edge[:,2] = coords[:,1]
+                
+                return coords_edge
+
+        else:
+            return coords
 
 
 
