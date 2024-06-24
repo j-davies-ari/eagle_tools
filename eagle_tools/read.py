@@ -226,15 +226,6 @@ class Snapshot(object):
         return loaded_data
 
 
-    def load_coordinates(self,align=None,align_aperture=0.01,**kwargs):
-        """
-        Retained for compatibility
-        """
-        warn(f"load_coordinates is deprecated and unnecessary. Coord wrapping now occurs automatically in `load()`.",DeprecationWarning)
-
-        return self.load('Coordinates',align_coords=align,align_coords_aperture=align_aperture,**kwargs)
-
-
     def set_scene(self,quantity,camera_position=None,max_hsml=None,align=None,selection=None):
         '''
         Returns an instance of sphviewer.Scene, which can then be addressed for camera control, rendering etc.
