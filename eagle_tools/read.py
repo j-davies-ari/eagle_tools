@@ -62,6 +62,8 @@ class MaskedReadEagleSnapshot(EagleSnapshot):
         
         super().__init__(filepath)
 
+        self.dataset_names = self.dataset_names[parttype]
+
         # Select region of interest
         super().select_region(centre[0]-region_size,
                             centre[0]+region_size,
