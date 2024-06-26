@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-
 import h5py as h5
 from sys import exit
 from importlib import import_module
@@ -10,6 +9,98 @@ from copy import deepcopy
 from warnings import warn
 
 from pyread_eagle import EagleSnapshot
+
+
+class MaskedReadEagleSnapshot(EagleSnapshot):
+    """
+    An instance of pyread_eagle.EagleSnapshot that is already masked to a certain region.
+    These make it possible for users to just have one instance of eagle_tools.Snapshot in their code, which generates these 
+    masked EagleSnapshots for a given region geometry and particle type.
+    The old method would mask the eagle_tools.Snapshot object internally which was more cumbersome than I expected,
+    particularly when working with different particle types at the same time.
+
+    This class shouldn't really be used on its own, but rather passed back into eagle_tools.Snapshot.load().
+
+    NB this class works entirely in CODE units, as pyread_eagle does. Users should be careful that all inputs, outputs and 
+    properties are treated as such.
+
+    """
+
+    def __init__(
+        self,
+        filepath,
+        parttype,
+        centre,
+        shape,
+        boxsize,
+        radius = None,
+        side_length = None
+    ):
+        """
+        NB: all inputs must be in CODE units
+        """
+
+        self.parttype = parttype
+        self.centre = centre
+
+        if shape == 'sphere':
+            if side_length is not None:
+                print("Argument `side_length` specified, but shape is `sphere`. `side_length` will be ignored in favour of `radius`.")
+            if radius is None:
+                raise ValueError("Please specify the `radius` kwarg for a spherical selection.")
+            region_size = radius
+
+        elif shape == 'cube':
+            if radius is not None:
+                print("Argument `radius` specified, but shape is `cube`. `radius` will be ignored in favour of `side_length`.")
+            if side_length is None:
+                raise ValueError("Please specify the `radius` kwarg for a spherical selection.")
+            region_size = side_length/2.
+
+        else:
+            raise ValueError("Selected shape must be one of `sphere` or `cube`.")
+        
+        super().__init__(filepath)
+
+        # Select region of interest
+        super().select_region(centre[0]-region_size,
+                            centre[0]+region_size,
+                            centre[1]-region_size,
+                            centre[1]+region_size,
+                            centre[2]-region_size,
+                            centre[2]+region_size)
+
+        # Now we just need to establish which of the particles we loaded in are within the spherical region.
+        loaded_pos = super().read_dataset(parttype,'Coordinates')
+
+        if len(loaded_pos) == 0:
+            # If no particles are found, return an empty array
+            self.mask = []
+            warn(f"No particles found...", RuntimeWarning)
+
+        else:
+
+            # Wrap the box
+            pos = loaded_pos - centre
+            pos += boxsize/2.
+            pos %= boxsize
+            pos -= boxsize/2.
+
+            # Create a mask to the region we want, for future use.
+            if shape == 'sphere':
+                r2 = np.einsum('...j,...j->...',pos,pos)
+                self.mask = np.where(r2<radius**2)[0] 
+            else:
+                self.mask = np.where((np.absolute(pos[:,0])<side_length/2.)&(np.absolute(pos[:,1])<side_length/2.)&(np.absolute(pos[:,2])<side_length/2.))[0]
+        
+    def select_region(self, *args, **kwargs):
+        raise SyntaxError(f"`select_region` has already been run on initialisation. Running again will break the internal mask. Instead, users should initialise a new MaskedReadEagleSnapshot.")
+
+    def read_dataset(self, *args, **kwargs):
+
+        return super().read_dataset(self.parttype, *args, **kwargs)[self.mask]
+
+
 
 class Snapshot(object):
 
@@ -46,134 +137,107 @@ class Snapshot(object):
         self.aexp = self.header['ExpansionFactor']
         self.z = self.header['Redshift']
         self.masstable = self.header['MassTable']/self.h
-        boxsize = self.header['BoxSize']
-        self.physical_boxsize = boxsize * self.aexp/self.h
+        self.code_boxsize = self.header['BoxSize']
+        self.physical_boxsize = self.code_boxsize * self.aexp/self.h
         self.f_b_cosmic = self.header['OmegaBaryon']/self.header['Omega0']
 
         # Create an astropy.cosmology object for doing cosmological calculations.
-
         self.cosmology = FlatLambdaCDM(100.*self.header['HubbleParam'],Om0=self.header['Omega0'],Ob0=self.header['OmegaBaryon'])
 
-        # Load in basic catalogues for halo/subhalo identification
+        # Fields in this dictionary should always have physical units.
+        #TODO enforce this with a custom setter
+        self.subfind = {}
 
-        # first_subhalo = np.array(self.E.readArray("SUBFIND_GROUP", self.sim_path, self.tag, 'FOF/FirstSubhaloID'))
-        self.first_subhalo = self.fof('FirstSubhaloID')
-
-        # If the final FOF group is empty, it can be assigned a FirstSubhaloID which is out of range
-        self.subhalo_COP = self.subfind('CentreOfPotential')
-        max_subhalo = len(self.subhalo_COP[:,0])
-        self.first_subhalo[self.first_subhalo==max_subhalo] -= 1 # this line fixes the issue
-
-        # Group number and subgroup number for all subhaloes
-        # self.subhalo_gn = self.subfind('GroupNumber')
-        # self.subhalo_sgn = self.subfind('SubGroupNumber')
-        # self.subhalo_COP = self.subfind('CentreOfPotential')
-        # self.subhalo_bulk_velocity = self.subfind('Velocity')
-
-        # Useful quantities for centrals only
-        # self.central_Mstar_30kpc = self.subhalo_Mstar_30kpc[self.first_subhalo]
-        self.central_COP = self.subhalo_COP[self.first_subhalo,:]
-        # self.central_bulk_velocity = self.subhalo_bulk_velocity[self.first_subhalo,:]
-        self.r200 = self.fof('Group_R_Crit200')
-        self.M200 = self.fof('Group_M_Crit200')
-        # self.nsub = self.fof('NumOfSubhalos')
-        self.groupnumbers = np.arange(len(self.M200)) + 1
-
-        self.have_run_select = False # This is set to True when a region has been selected - prevents crashes later on.
+        self.load_subfind('Subhalo/GroupNumber','Subhalo/SubGroupNumber')
 
 
-    def fof(self,quantity,phys_units=True,cgs_units=False,verbose=False):
-        return self._catalogue_read(quantity,table='FOF',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
-
-
-    def subfind(self,quantity,phys_units=True,cgs_units=False,verbose=False):
-        return self._catalogue_read(quantity,table='Subhalo',phys_units=phys_units,cgs_units=cgs_units,verbose=verbose)
-
-
-    def select(self,groupnumber,parttype=0,region_size='r200',region_shape='sphere'):
-        '''
-        Selection routine for CENTRALS only.
-        Given a group number, selects a region of a given extent from that group's centre of potential.
-        If region_shape is 'sphere' - select a spherical region of RADIUS region_size
-        If region_shape is 'cube' - select a sub-box of SIDE LENGTH region_size
-        Works with all particle types, default is 0 (gas)
-        '''
-        assert region_shape in ['sphere','cube'],'Please specify a valid region_shape (sphere or cube)'
-
-        # Get the centre of potential from SUBFIND
-        centre = self.central_COP[groupnumber-1,:]
-        code_centre = centre * self.h/self.aexp # convert to h-less comoving code units
-
-        # If the region size hasn't been given, set it to r200 (this is the default)
-        if region_size == 'r200':
-
-            region_size = self.r200[groupnumber-1]
-
-            if region_shape == 'cube': # Double to give cube going out to r200
-                region_size *= 2.
-
-        code_region_size = region_size * self.h/self.aexp # convert to h-full comoving code units
-
-        self.parttype = parttype
-        self.this_M200 = self.M200[groupnumber-1]
-        self.this_r200 = self.r200[groupnumber-1]
-        self.this_groupnumber = groupnumber
-        self.this_centre = centre
-        self.region_size = region_size
-        self.region_shape = region_shape
-
-        # Open snapshot
-        self.snap = EagleSnapshot(self.snapfile)
-
-        # Select region of interest - this isolates the content of 'snap' to only this region for future use.
-        self.snap.select_region(code_centre[0]-code_region_size,
-                            code_centre[0]+code_region_size,
-                            code_centre[1]-code_region_size,
-                            code_centre[1]+code_region_size,
-                            code_centre[2]-code_region_size,
-                            code_centre[2]+code_region_size)
-
-        # Now we just need to establish which of the particles we loaded in are within the spherical region.
-        pos = self.snap.read_dataset(parttype,'Coordinates') * self.aexp/self.h
-
-        if len(pos) == 0:
-            # If no particles are found, return an empty array
-            self.particle_selection = []
-            self.have_run_select = True
-            return
-
-        # Wrap the box
-        pos -= centre
-        pos+=self.physical_boxsize/2.
-        pos%=self.physical_boxsize
-        pos-=self.physical_boxsize/2.
-
-        # Create a mask to the region we want, for future use.
-        if region_shape == 'sphere':
-            r2 = np.einsum('...j,...j->...',pos,pos) # get the radii from the centre
-            self.particle_selection = np.where(r2<region_size**2)[0] # make the mask   
-        else:
-            self.particle_selection = np.where((np.absolute(pos[:,0])<region_size/2.)&(np.absolute(pos[:,1])<region_size/2.)&(np.absolute(pos[:,2])<region_size/2.))[0] # make the mask  
+    def select_halo(self,
+        groupnumber: int,
+        subgroupnumber: int,
+        parttype: int = None,
+        shape: str = 'sphere',
+        radius: str | float = None,
+        side_length: str | float = None
+    ) -> MaskedReadEagleSnapshot:
         
-        self.have_run_select = True
+        if parttype is None:
+            raise ValueError("Please enter a `parttype` as an integer kwarg.")
+        
+        if shape == 'sphere':
+            if side_length is not None:
+                print("Argument `side_length` specified, but shape is `sphere`. `side_length` will be ignored in favour of `radius`.")
+            if radius is None:
+                raise ValueError("Please specify the `radius` kwarg for a spherical selection.")
+            region_size = radius
+
+        elif shape == 'cube':
+            if radius is not None:
+                print("Argument `radius` specified, but shape is `cube`. `radius` will be ignored in favour of `side_length`.")
+            if side_length is None:
+                raise ValueError("Please specify the `radius` kwarg for a spherical selection.")
+            region_size = side_length
+
+        else:
+            raise ValueError("Selected shape must be one of `sphere` or `cube`.")
+
+
+        if not 'Subhalo/CentreOfPotential' in self.subfind.keys():
+            self.load_subfind('Subhalo/CentreOfPotential')
+
+        subfind_location = np.where(
+            (self.subfind['Subhalo/GroupNumber'] == groupnumber)&
+            (self.subfind['Subhalo/SubGroupNumber'] == subgroupnumber)
+        )[0][0]
+
+        # Make sure we're working with a copy as this has caused issues before
+        # The internally cached subfind quantity must be in physical units
+        centre = deepcopy(
+            self.subfind['Subhalo/CentreOfPotential'][subfind_location]
+        ) * self.h/self.aexp # convert back to code units
+
+        if isinstance(region_size,str):
+            if subgroupnumber != 0 and region_size[:3] == 'FOF':
+                raise ValueError(f"Requested a region size from the FOF table but halo is not a central (SubGroupNumber=0).")
+            elif subgroupnumber == 0 and region_size[:3] == 'FOF':
+                region_size_location = groupnumber - 1
+            else:
+                region_size_location = subfind_location
+                
+            # Look to see if the relevant subfind table has already been cached
+            if not region_size in self.subfind.keys():
+                self.load_subfind(region_size)
+            # Make sure we're working with a copy as this has caused issues before
+            # The internally cached subfind quantity must be in physical units
+            region_size_to_load = deepcopy(
+                self.subfind[region_size][region_size_location]
+            ) * self.h/self.aexp # convert back to code units
+        
+        else:
+            region_size_to_load = region_size * self.h/self.aexp # assuming input was in physical units
+
+        return MaskedReadEagleSnapshot(
+            self.snapfile,
+            parttype,
+            centre,
+            shape,
+            self.code_boxsize,
+            radius = region_size_to_load if shape == 'sphere' else None,
+            side_length = region_size_to_load if shape == 'cube' else None
+        )
 
     
     def load(self,
-        quantity,
-        phys_units=True,
-        cgs_units=False,
-        verbose=False,
-        wrap_coords = True,
-        align_coords = None,
-        align_coords_aperture=0.01
+        masked_snapshot: MaskedReadEagleSnapshot,
+        quantity: str,
+        phys_units: bool = True,
+        cgs_units: bool = False,
+        verbose: bool = False,
+        wrap_coords: bool = True,
+        align_coords: bool = None,
+        align_coords_aperture: float = 0.01
     ):
-        '''
-        Now we have run "select" and established which particles are in our spherical region, we can load
-        in anything we want!
-        '''
 
-        # First make sure that select has been run
-        assert self.have_run_select == True,'Please run "select" before trying to load anything in.'
+        assert isinstance(masked_snapshot, MaskedReadEagleSnapshot)
 
         # Get our factors of h and a to convert to physical units
         pointto_snapfile = self.snapfile[:-6]
@@ -181,12 +245,12 @@ class Snapshot(object):
         while True:
             try:
                 with h5.File(pointto_snapfile+str(snapfile_ind)+'.hdf5', 'r') as f:
-                    temp_data = f['/PartType%i/%s'%((self.parttype,quantity))]
+                    temp_data = f['/PartType%i/%s'%((masked_snapshot.parttype,quantity))]
                     h_conversion_factor = temp_data.attrs['h-scale-exponent']
                     aexp_conversion_factor = temp_data.attrs['aexp-scale-exponent']
                     cgs_conversion_factor = temp_data.attrs['CGSConversionFactor']
             except:
-                print('No particles of type ',self.parttype,' in snapfile ',snapfile_ind)
+                print('No particles of type ',masked_snapshot.parttype,' in snapfile ',snapfile_ind)
                 snapfile_ind += 1
                 continue
             break
@@ -198,17 +262,14 @@ class Snapshot(object):
             print('CGS conversion factor = ',cgs_conversion_factor)
 
         # Load in the quantity
-        loaded_data = self.snap.read_dataset(self.parttype,quantity)[self.particle_selection]
+        loaded_data = masked_snapshot.read_dataset(quantity)
 
         # Cast the data into a numpy array of the correct type
         dt = loaded_data.dtype
         loaded_data = np.array(loaded_data,dtype=dt)
 
-        if np.issubdtype(dt,np.integer):
-            # Don't do any corrections if loading in integers
-            return loaded_data[self.particle_selection]
-        else:
-
+        if not np.issubdtype(dt,np.integer): # Don't do any corrections if loading in integers
+            
             if phys_units:
                 loaded_data *= np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
 
@@ -218,12 +279,69 @@ class Snapshot(object):
         if quantity == 'Coordinates':
             loaded_data = self._transform_coordinates(
                                                     loaded_data,
+                                                    masked_snapshot.centre * self.aexp/self.h,
                                                     wrap_coords = wrap_coords,
                                                     align_coords = align_coords,
                                                     align_coords_aperture = align_coords_aperture
                                                     )
             
         return loaded_data
+
+
+    def load_subfind(self,*quantities,phys_units=True,cgs_units=False,verbose=False,overwrite=False):
+        """
+        Load subfind catalogues internally.
+        """
+
+        for quantity in quantities:
+
+            if quantity in self.subfind.keys() and overwrite == False:
+                print(f"{quantity} already cached.",flush=True)
+                continue
+
+            file_ind = 0
+            while True: #TODO replace this implicit True with iterating over globbed files or something
+
+                try:
+                    with h5.File(f"{self.subfind_root}.{file_ind}.hdf5", 'r') as f:
+                        
+                        data = f[f"/{quantity}"]
+
+                        if file_ind == 0:
+
+                            # Grab conversion factors from first file
+                            h_conversion_factor = data.attrs['h-scale-exponent']
+                            aexp_conversion_factor = data.attrs['aexp-scale-exponent']
+                            cgs_conversion_factor = data.attrs['CGSConversionFactor']
+
+                            if verbose:
+                                print('Loading ',quantity)
+                                print('h exponent = ',h_conversion_factor)
+                                print('a exponent = ',aexp_conversion_factor)
+                                print('CGS conversion factor = ',cgs_conversion_factor)
+
+                            # Get the data type
+                            dt = deepcopy(data.dtype)
+                            loaded_data = np.array(data,dtype=dt)
+                    
+                        else:
+                            loaded_data = np.append(loaded_data,np.array(data,dtype=dt),axis=0)
+
+                except:
+                    # print('Run out of files at ',file_ind)
+                    break
+
+                file_ind += 1
+            
+            if not np.issubdtype(dt,np.integer): # Don't do any corrections if loading in integers
+
+                if phys_units:
+                    loaded_data *= np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
+
+                if cgs_units:
+                    loaded_data *= cgs_conversion_factor
+
+            self.subfind[quantity] = loaded_data
 
 
     def set_scene(self,quantity,camera_position=None,max_hsml=None,align=None,selection=None):
@@ -362,67 +480,6 @@ class Snapshot(object):
         exit()
 
 
-    def _catalogue_read(self,quantity,table,phys_units=True,cgs_units=False,verbose=False):
-        '''
-        Read in FOF or SUBFIND catalogues.
-        The user should use the wrapper functions 'fof' and 'subfind' rather than specifying 'table' here.
-        '''
-
-        assert table in ['FOF','Subhalo'],'table must be either FOF or Subhalo'
-
-        file_ind = 0
-        while True:
-
-            try:
-                with h5.File(f"{self.subfind_root}.{file_ind}.hdf5", 'r') as f:
-                    
-                    if file_ind == 0:
-                        
-                        data = f['/'+table+'/%s'%(quantity)]
-
-                        # Grab conversion factors from first file
-                        h_conversion_factor = data.attrs['h-scale-exponent']
-                        aexp_conversion_factor = data.attrs['aexp-scale-exponent']
-                        cgs_conversion_factor = data.attrs['CGSConversionFactor']
-
-                        if verbose:
-                            print('Loading ',quantity)
-                            print('h exponent = ',h_conversion_factor)
-                            print('a exponent = ',aexp_conversion_factor)
-                            print('CGS conversion factor = ',cgs_conversion_factor)
-
-                        # Get the data type
-                        dt = deepcopy(data.dtype)
-
-                        data_arr = np.array(data,dtype=dt)
-                
-                    else:
-                        data = f['/'+table+'/%s'%(quantity)]
-                        data_arr = np.append(data_arr,np.array(data,dtype=dt),axis=0)
-
-            except:
-                # print('Run out of files at ',file_ind)
-                break
-
-            file_ind += 1
-        
-        if np.issubdtype(dt,np.integer):
-            # Don't do any corrections if loading in integers
-            return data_arr
-
-        else:
-
-            if phys_units:
-                if cgs_units:
-                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor) * cgs_conversion_factor
-                else:
-                    return data_arr * np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
-            else:
-                if cgs_units:
-                    return data_arr * cgs_conversion_factor
-                else:
-                    return data_arr
-
     def _get_Jvector(self,XYZ,aperture=0.03,CoMvelocity=True):
 
         Vxyz = self.load('Velocity')
@@ -451,6 +508,7 @@ class Snapshot(object):
 
     def _transform_coordinates(self,
             coords,
+            centre,
             wrap_coords = True,
             align_coords=None,
             align_coords_aperture=0.01
@@ -462,7 +520,7 @@ class Snapshot(object):
         if wrap_coords:
 
             # Centre and wrap the box
-            coords -= self.this_centre
+            coords -= centre
             coords+=self.physical_boxsize/2.
             coords%=self.physical_boxsize
             coords-=self.physical_boxsize/2.
