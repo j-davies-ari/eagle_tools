@@ -147,6 +147,7 @@ class Snapshot(object):
         # Fields in this dictionary should always have physical units.
         #TODO enforce this with a custom setter
         self.subfind = {}
+        self.subfind_attrs = {}
 
         self.load_subfind('Subhalo/GroupNumber','Subhalo/SubGroupNumber')
 
@@ -288,9 +289,11 @@ class Snapshot(object):
         return loaded_data
 
 
-    def load_subfind(self,*quantities,phys_units=True,cgs_units=False,verbose=False,overwrite=False):
+    def load_subfind(self,*quantities,verbose=False,overwrite=False):
         """
         Load subfind catalogues internally.
+        We always internally cache in physical code units.
+        cgs, aexp and h conversion factors can be found in Snapshot.subfind_attrs.
         """
 
         for quantity in quantities:
@@ -310,15 +313,13 @@ class Snapshot(object):
                         if file_ind == 0:
 
                             # Grab conversion factors from first file
-                            h_conversion_factor = data.attrs['h-scale-exponent']
-                            aexp_conversion_factor = data.attrs['aexp-scale-exponent']
-                            cgs_conversion_factor = data.attrs['CGSConversionFactor']
+                            attrs = dict(data.attrs)
 
                             if verbose:
                                 print('Loading ',quantity)
-                                print('h exponent = ',h_conversion_factor)
-                                print('a exponent = ',aexp_conversion_factor)
-                                print('CGS conversion factor = ',cgs_conversion_factor)
+                                print('h exponent = ',attrs['h-scale-exponent'])
+                                print('a exponent = ',attrs['aexp-scale-exponent'])
+                                print('CGS conversion factor = ',attrs['cgs_conversion_factor'])
 
                             # Get the data type
                             dt = deepcopy(data.dtype)
@@ -328,20 +329,17 @@ class Snapshot(object):
                             loaded_data = np.append(loaded_data,np.array(data,dtype=dt),axis=0)
 
                 except:
-                    # print('Run out of files at ',file_ind)
                     break
 
                 file_ind += 1
             
             if not np.issubdtype(dt,np.integer): # Don't do any corrections if loading in integers
 
-                if phys_units:
-                    loaded_data *= np.power(self.h,h_conversion_factor) * np.power(self.aexp,aexp_conversion_factor)
-
-                if cgs_units:
-                    loaded_data *= cgs_conversion_factor
+                loaded_data *= np.power(self.h,attrs['h-scale-exponent'])\
+                            * np.power(self.aexp,attrs['aexp-scale-exponent'])\
 
             self.subfind[quantity] = loaded_data
+            self.subfind_attrs[quantity] = attrs
 
 
     def set_scene(self,quantity,camera_position=None,max_hsml=None,align=None,selection=None):
