@@ -106,17 +106,19 @@ class MaskedReadEagleSnapshot(EagleSnapshot):
 
 class Snapshot(object):
 
-    def __init__(self,sim = 'L0100N1504',
-                        run = 'REFERENCE',
-                        tag='028_z000p000',
-                        pdata_type = 'SNAPSHOT',
-                        data_location = '/hpcdata0/simulations/EAGLE/'):
+    def __init__(self,
+        sim = 'L0100N1504',
+        model = 'REFERENCE',
+        tag='028_z000p000',
+        pdata_type = 'SNAPSHOT',
+        data_location = '/hpcdata0/simulations/EAGLE/'
+    ):
 
         self.sim = sim
-        self.run = run
+        self.model = model
         self.tag = tag
         self.pdata_type = pdata_type
-        self.sim_path = f"{data_location}/{sim}/{run}/data"
+        self.sim_path = f"{data_location}/{sim}/{model}/data"
 
         # Create strings to point the read module to the first snapshot/particle/subfind files
         if pdata_type == 'SNAPSHOT':
@@ -151,8 +153,6 @@ class Snapshot(object):
         self.subfind = {}
         self.subfind_attrs = {}
 
-        self.load_subfind('Subhalo/GroupNumber','Subhalo/SubGroupNumber')
-
 
     def select_halo(self,
         groupnumber: int,
@@ -183,9 +183,11 @@ class Snapshot(object):
         else:
             raise ValueError("Selected shape must be one of `sphere` or `cube`.")
 
-
         if not 'Subhalo/CentreOfPotential' in self.subfind.keys():
             self.load_subfind('Subhalo/CentreOfPotential')
+
+        if not 'Subhalo/GroupNumber' in self.subfind.keys() and 'Subhalo/SubGroupNumber' in self.subfind.keys():
+            self.load_subfind('Subhalo/GroupNumber','Subhalo/SubGroupNumber')
 
         subfind_location = np.where(
             (self.subfind['Subhalo/GroupNumber'] == groupnumber)&
@@ -479,6 +481,25 @@ class Snapshot(object):
         print('No haloes found')
         exit()
 
+    def softening(self, comoving = False):
+
+        # This sucks, there must be a smarter way of getting the resolution
+        if self.sim in ['L0025N0376', 'L0050N0752', 'L0100N1504']:
+            e_com = 2.66
+            e_max_phys = 0.7
+        elif self.sim in ['L0025N0752', 'L0034N1034']:
+            e_com = 1.33
+            e_max_phys = 0.35
+        else:
+            raise NameError('Softening for this simulation not known yet!')
+    
+        # Logic for the comoving softening
+        if e_com < e_max_phys/self.aexp:
+            e = e_com
+        else:
+            e = e_max_phys/self.aexp
+        
+        return e if comoving else e*self.aexp
 
     def _get_Jvector(self,XYZ,aperture=0.03,CoMvelocity=True):
 
