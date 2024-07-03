@@ -12,7 +12,7 @@ from scipy.stats import spearmanr
 
 class config(object): # Sets the font of axis labels in your code. You can also use plotparams.columnwidth etc for sizes.
     def __init__(self):
-        params = {'axes.labelsize': 12, 'xtick.labelsize': 13, 'ytick.labelsize': 13, 'lines.linewidth' : 2, 'axes.titlesize' : 17, 'font.family' : 'serif'}
+        params = {"text.usetex": True, 'axes.labelsize': 16, 'xtick.labelsize': 13, 'ytick.labelsize': 13, 'lines.linewidth' : 2, 'axes.titlesize' : 16, 'font.family' : 'serif'}
         plt.rcParams.update(params)
         
         self.columnwidth = 240./72.27
