@@ -237,6 +237,7 @@ class Snapshot(object):
         phys_units: bool = True,
         cgs_units: bool = False,
         verbose: bool = False,
+        centre_coords: bool = True,
         wrap_coords: bool = True,
         align_coords: bool = None,
         align_coords_aperture: float = 0.01
@@ -285,6 +286,7 @@ class Snapshot(object):
             loaded_data = self._transform_coordinates(
                                                     loaded_data,
                                                     masked_snapshot.centre * self.aexp/self.h,
+                                                    centre_coords = centre_coords,
                                                     wrap_coords = wrap_coords,
                                                     align_coords = align_coords,
                                                     align_coords_aperture = align_coords_aperture
@@ -530,6 +532,7 @@ class Snapshot(object):
     def _transform_coordinates(self,
             coords,
             centre,
+            centre_coords = True,
             wrap_coords = True,
             align_coords=None,
             align_coords_aperture=0.01
@@ -538,13 +541,12 @@ class Snapshot(object):
         Wraps coordinates and optionally transforms them to align face-on or edge-on.
         '''
 
-        if wrap_coords:
-
-            # Centre and wrap the box
+        if centre_coords:
             coords -= centre
-            coords+=self.physical_boxsize/2.
-            coords%=self.physical_boxsize
-            coords-=self.physical_boxsize/2.
+            if wrap_coords:                
+                coords+=self.physical_boxsize/2.
+                coords%=self.physical_boxsize
+                coords-=self.physical_boxsize/2.
 
         if align_coords is not None:
 
