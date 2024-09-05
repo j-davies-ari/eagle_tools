@@ -21,8 +21,8 @@ class MaskedReadEagleSnapshot(EagleSnapshot):
 
     This class shouldn't really be used on its own, but rather passed back into eagle_tools.Snapshot.load().
 
-    NB this class works entirely in CODE units, as pyread_eagle does. Users should be careful that all inputs, outputs and 
-    properties are treated as such.
+    NB Unlike the Snapshot class below, this class works entirely in CODE units, as pyread_eagle does. 
+    Users should be careful that all inputs, outputs and properties are treated as such.
 
     """
 
@@ -112,7 +112,7 @@ class Snapshot(object):
     def __init__(self,
         sim = 'L0100N1504',
         model = 'REFERENCE',
-        tag='028_z000p000',
+        tag = '028_z000p000',
         pdata_type = 'SNAPSHOT',
         data_location = '/hpcdata0/simulations/EAGLE/'
     ):
@@ -125,14 +125,11 @@ class Snapshot(object):
 
         # Create strings to point the read module to the first snapshot/particle/subfind files
         if pdata_type == 'SNAPSHOT':
-            # self.snapfile = self.sim_path + 'snapshot_'+tag+'/snap_'+tag+'.0.hdf5'
             self.snapfile = f"{self.sim_path}/snapshot_{tag}/snap_{tag}.0.hdf5"
         elif pdata_type == 'PARTDATA':
-            # self.snapfile = self.sim_path + 'particledata_'+tag+'/eagle_subfind_particles_'+tag+'.0.hdf5'
             self.snapfile = f"{self.sim_path}/particledata_{tag}/eagle_subfind_particles_{tag}.0.hdf5"
         else:
             raise TypeError('Please pick a valid pdata_type (SNAPSHOT or PARTDATA)')
-        # self. = self.sim_path + 'groups_'+tag+'/eagle_subfind_tab_' + tag + '.'
         self.subfind_root = f"{self.sim_path}/groups_{tag}/eagle_subfind_tab_{tag}"
 
         # Get volume information. Note that header is taken from one file only, so quantities such as 'NumPart_ThisFile' are not useful.
@@ -430,10 +427,6 @@ class Snapshot(object):
         return Render(scene).get_image()
 
 
-    ############################
-
-
-
     def load_abundances(self):
 
         '''
@@ -537,6 +530,9 @@ class Snapshot(object):
         return e if comoving else e*self.aexp
 
     def _get_Jvector(self,XYZ,masked_snapshot,aperture=0.03,CoMvelocity=True):
+        """
+        From Adrien Thob's tools
+        """
 
         Vxyz = self.load(masked_snapshot,'Velocity')
         Jmass = self.load(masked_snapshot,'Mass')
@@ -547,10 +543,9 @@ class Snapshot(object):
         # Restrict particles
         extract = (distancesall<aperture)
         particles = particlesall[extract].copy()
-        # distances = distancesall[extract].copy()
         Mass = np.sum(particles[:,3])
         if CoMvelocity:
-            # Compute CoM velocty & correct
+            # Compute CoM velocity & correct
             dvVmass = np.nan_to_num(np.sum(particles[:,3][:,np.newaxis]*particles[:,4:7],axis=0)/Mass)
             particlesall[:,4:7]-=dvVmass
             particles[:,4:7]-=dvVmass
@@ -572,6 +567,7 @@ class Snapshot(object):
     ):
         '''
         Wraps coordinates and optionally transforms them to align face-on or edge-on.
+        Written by Jake Rose (summer student)
         '''
 
         if centre_coords:
@@ -622,8 +618,6 @@ class Snapshot(object):
             return coords
 
 
-
-
 def attrs(quantity,
                     box = 'L0100N1504',
                     model = 'REFERENCE',
@@ -666,7 +660,6 @@ def attrs(quantity,
         break
 
     return attributes
-
 
 
 def catalogue(filepath,groupnumbers,fields,gn_field='GroupNumber'):
