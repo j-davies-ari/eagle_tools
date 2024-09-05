@@ -186,11 +186,9 @@ class Snapshot(object):
         else:
             raise ValueError("Selected shape must be one of `sphere` or `cube`.")
 
-        if not 'Subhalo/CentreOfPotential' in self.subfind.keys():
-            self.load_subfind('Subhalo/CentreOfPotential')
-
-        if not 'Subhalo/GroupNumber' in self.subfind.keys() and 'Subhalo/SubGroupNumber' in self.subfind.keys():
-            self.load_subfind('Subhalo/GroupNumber','Subhalo/SubGroupNumber')
+        for required_property in ['Subhalo/GroupNumber','Subhalo/SubGroupNumber','Subhalo/CentreOfPotential']:
+            if required_property not in self.subfind.keys():
+                self.load_subfind(required_property)
 
         subfind_location = np.where(
             (self.subfind['Subhalo/GroupNumber'] == groupnumber)&
