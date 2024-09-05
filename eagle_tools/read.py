@@ -353,7 +353,9 @@ class Snapshot(object):
         max_hsml=None,
         align=None,
         selection=None,
-        resolution = 1024,
+        extent = None,
+        xres = 1024,
+        yres = 1024,
         **quantity_load_kwargs
     ):
         '''
@@ -383,17 +385,18 @@ class Snapshot(object):
 
         scene = Scene(particles)
 
-        default_extent = [-masked_snapshot._region_size,
-                          masked_snapshot._region_size,
-                          -masked_snapshot._region_size,
-                          masked_snapshot._region_size]
+        if extent is None:
+            extent = [-masked_snapshot._region_size * self.aexp/self.h,
+                          masked_snapshot._region_size * self.aexp/self.h,
+                          -masked_snapshot._region_size * self.aexp/self.h,
+                          masked_snapshot._region_size * self.aexp/self.h]
 
         if camera_position is not None:
             camera_position -= self.this_centre
         else:
             camera_position = [0.,0.,0.]
 
-        scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=default_extent, xsize=resolution, ysize=resolution)
+        scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=extent, xsize=xres, ysize=yres)
 
         return scene
 
@@ -405,7 +408,9 @@ class Snapshot(object):
         max_hsml=None,
         align=None,
         selection=None,
-        resolution = 1024,
+        extent = None,
+        xres = 1024,
+        yres = 1024,
         **quantity_load_kwargs
     ):
         """
@@ -420,7 +425,9 @@ class Snapshot(object):
             max_hsml=max_hsml,
             align=align,
             selection=selection,
-            resolution=resolution,
+            extent = extent,
+            xres = xres,
+            yres = yres,
             **quantity_load_kwargs
         )
 
