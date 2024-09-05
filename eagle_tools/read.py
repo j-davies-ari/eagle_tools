@@ -3,11 +3,11 @@
 import numpy as np
 import h5py as h5
 from sys import exit
-from importlib import import_module
 from astropy.cosmology import FlatLambdaCDM
 from copy import deepcopy
 from warnings import warn
 
+from sphviewer import Particles, Scene, Render
 from pyread_eagle import EagleSnapshot
 
 
@@ -364,12 +364,6 @@ class Snapshot(object):
         You can pass in a set of indices matching a selection you've already made, such that the loaded co-ordinates match.
         '''
 
-        if not 'sphviewer' in globals():
-            sphviewer = import_module('sphviewer')
-
-        # # Make sure that imaging is enabled
-        # assert self.visualisation_enabled == True,'Please enable visualisation when initialising snapshot'
-
         # for now we will always centre the coords
         pos = self.load(masked_snapshot,'Coordinates',centre_coords=True,align_coords=align)
         quant = self.load(masked_snapshot,quantity,**quantity_load_kwargs)
@@ -383,14 +377,14 @@ class Snapshot(object):
         assert len(pos[:,0])==len(quant),'Size mismatch between input quantity and particle selection'
 
         if masked_snapshot.parttype in [1,2,3]:
-            Particles = sphviewer.Particles(pos, quant, hsml=None, nb=58)
+            particles = Particles(pos, quant, hsml=None, nb=58)
         else:
             hsml = self.load(masked_snapshot,'SmoothingLength')[selection]
             if max_hsml is not None:
                 hsml[hsml>max_hsml] = max_hsml
-            Particles = sphviewer.Particles(pos, quant, hsml=hsml)
+            particles = Particles(pos, quant, hsml=hsml)
 
-        Scene = sphviewer.Scene(Particles)
+        scene = Scene(particles)
 
         default_extent = [-masked_snapshot._region_size,
                           masked_snapshot._region_size,
@@ -402,9 +396,9 @@ class Snapshot(object):
         else:
             camera_position = [0.,0.,0.]
 
-        Scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=default_extent, xsize=resolution, ysize=resolution)
+        scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=default_extent, xsize=resolution, ysize=resolution)
 
-        return Scene
+        return scene
 
 
     def image(self,
@@ -433,11 +427,7 @@ class Snapshot(object):
             **quantity_load_kwargs
         )
 
-        # This sucks, we should make sphviewer a proper dependency and import it properly.
-        if not 'sphviewer' in globals():
-            sphviewer = import_module('sphviewer')
-
-        return sphviewer.Render(scene).get_image()
+        return Render(scene).get_image()
 
 
     ############################

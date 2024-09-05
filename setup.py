@@ -6,5 +6,5 @@ setup(name = 'eagle_tools',
       version = '0.1',
       description = 'Useful tools for working with EAGLE snapshots in python.',
       packages = ['eagle_tools',],
-      install_requires=['numpy','h5py','astropy','pyread_eagle','eaglesqlTools',],
+      install_requires=['numpy','h5py','astropy','pyread_eagle','eaglesqlTools','py-sphviewer'],
       )
