@@ -42,6 +42,7 @@ class MaskedReadEagleSnapshot(EagleSnapshot):
 
         self.parttype = parttype
         self.centre = centre
+        self.shape = shape
 
         if shape == 'sphere':
             if side_length is not None:
@@ -60,6 +61,8 @@ class MaskedReadEagleSnapshot(EagleSnapshot):
         else:
             raise ValueError("Selected shape must be one of `sphere` or `cube`.")
         
+        self._region_size = region_size # only for internal use in sphviewer bit
+
         super().__init__(filepath)
 
         self.dataset_names = self.dataset_names[parttype]
@@ -285,7 +288,7 @@ class Snapshot(object):
         if quantity == 'Coordinates':
             loaded_data = self._transform_coordinates(
                                                     loaded_data,
-                                                    masked_snapshot.centre * self.aexp/self.h,
+                                                    masked_snapshot,
                                                     centre_coords = centre_coords,
                                                     wrap_coords = wrap_coords,
                                                     align_coords = align_coords,
@@ -348,14 +351,20 @@ class Snapshot(object):
             self.subfind_attrs[quantity] = attrs
 
 
-    def set_scene(self,quantity,camera_position=None,max_hsml=None,align=None,selection=None):
+    def set_scene(self,
+        masked_snapshot: MaskedReadEagleSnapshot,
+        quantity,
+        camera_position=None,
+        max_hsml=None,
+        align=None,
+        selection=None,
+        resolution = 1024,
+        **quantity_load_kwargs
+    ):
         '''
         Returns an instance of sphviewer.Scene, which can then be addressed for camera control, rendering etc.
         You can pass in a set of indices matching a selection you've already made, such that the loaded co-ordinates match.
         '''
-
-        # First make sure that select has been run
-        assert self.have_run_select == True,'Please run "select" before trying to load anything in.'
 
         if not 'sphviewer' in globals():
             sphviewer = import_module('sphviewer')
@@ -363,38 +372,74 @@ class Snapshot(object):
         # # Make sure that imaging is enabled
         # assert self.visualisation_enabled == True,'Please enable visualisation when initialising snapshot'
 
-        pos = self.load_coordinates(align=align)
+        # for now we will always centre the coords
+        pos = self.load(masked_snapshot,'Coordinates',centre_coords=True,align_coords=align)
+        quant = self.load(masked_snapshot,quantity,**quantity_load_kwargs)
 
         if selection is not None:
-            pos = pos[selection,:]
+            pos = pos[selection]
+            quant = quant[selection]
         else:
             selection = np.arange(len(pos[:,0]))
 
-        assert len(pos[:,0])==len(quantity),'Size mismatch between input quantity and particle selection'
+        assert len(pos[:,0])==len(quant),'Size mismatch between input quantity and particle selection'
 
-        if self.parttype in [1,2,3]:
-            Particles = sphviewer.Particles(pos, quantity, hsml=None, nb=58)
+        if masked_snapshot.parttype in [1,2,3]:
+            Particles = sphviewer.Particles(pos, quant, hsml=None, nb=58)
         else:
-            hsml = self.load('SmoothingLength')[selection]
+            hsml = self.load(masked_snapshot,'SmoothingLength')[selection]
             if max_hsml is not None:
                 hsml[hsml>max_hsml] = max_hsml
-            Particles = sphviewer.Particles(pos, quantity, hsml=hsml)
+            Particles = sphviewer.Particles(pos, quant, hsml=hsml)
 
         Scene = sphviewer.Scene(Particles)
 
-        if self.region_shape == 'cube':
-            default_extent = self.region_size/2.
-        else:
-            default_extent = self.region_size
+        default_extent = [-masked_snapshot._region_size,
+                          masked_snapshot._region_size,
+                          -masked_snapshot._region_size,
+                          masked_snapshot._region_size]
 
         if camera_position is not None:
             camera_position -= self.this_centre
         else:
             camera_position = [0.,0.,0.]
 
-        Scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=[-default_extent, default_extent, -default_extent, default_extent], xsize=1024, ysize=1024)
+        Scene.update_camera(x=camera_position[0],y=camera_position[1],z=camera_position[2],r='infinity',extent=default_extent, xsize=resolution, ysize=resolution)
 
         return Scene
+
+
+    def image(self,
+        masked_snapshot: MaskedReadEagleSnapshot,
+        quantity,
+        camera_position=None,
+        max_hsml=None,
+        align=None,
+        selection=None,
+        resolution = 1024,
+        **quantity_load_kwargs
+    ):
+        """
+        Plot an image of a halo quantity. Use this instead of set_scene if you don't need access to sphviewer's camera
+        control or other features.
+        """
+
+        scene = self.set_scene(
+            masked_snapshot,
+            quantity,
+            camera_position=camera_position,
+            max_hsml=max_hsml,
+            align=align,
+            selection=selection,
+            resolution=resolution,
+            **quantity_load_kwargs
+        )
+
+        # This sucks, we should make sphviewer a proper dependency and import it properly.
+        if not 'sphviewer' in globals():
+            sphviewer = import_module('sphviewer')
+
+        return sphviewer.Render(scene).get_image()
 
 
     ############################
@@ -503,10 +548,10 @@ class Snapshot(object):
         
         return e if comoving else e*self.aexp
 
-    def _get_Jvector(self,XYZ,aperture=0.03,CoMvelocity=True):
+    def _get_Jvector(self,XYZ,masked_snapshot,aperture=0.03,CoMvelocity=True):
 
-        Vxyz = self.load('Velocity')
-        Jmass = self.load('Mass')
+        Vxyz = self.load(masked_snapshot,'Velocity')
+        Jmass = self.load(masked_snapshot,'Mass')
 
         particlesall = np.vstack([XYZ.T,Jmass,Vxyz.T]).T
         # Compute distances
@@ -531,7 +576,7 @@ class Snapshot(object):
 
     def _transform_coordinates(self,
             coords,
-            centre,
+            masked_snapshot,
             centre_coords = True,
             wrap_coords = True,
             align_coords=None,
@@ -542,7 +587,7 @@ class Snapshot(object):
         '''
 
         if centre_coords:
-            coords -= centre
+            coords -= masked_snapshot.centre * self.aexp/self.h
             if wrap_coords:                
                 coords+=self.physical_boxsize/2.
                 coords%=self.physical_boxsize
@@ -553,7 +598,7 @@ class Snapshot(object):
             assert align_coords in ['face','edge',None],'Please pick a valid alignment'
 
             # Generate the new basis vectors
-            J_vec = self._get_Jvector(coords,aperture=align_coords_aperture)
+            J_vec = self._get_Jvector(coords,masked_snapshot,aperture=align_coords_aperture)
 
             e3= J_vec #already normalised if using kinematics diagnostics
 
