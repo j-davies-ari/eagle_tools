@@ -1,13 +1,5 @@
 import numpy as np
-import sys
 
-def mpiprint(string):
-    
-    print(string)
-    sys.stdout.flush()
-
-def makenp(pylist):
-    return np.asarray(pylist)
 
 def soft_comov(z,sim): # Returns the comoving softening length for any redshift in the EAGLE boxes
     a = 1./(1.+z)
@@ -85,13 +77,6 @@ class Constants(object):
 
     c_SI = 299792458.
     c_CGS = c_SI*100.
-
-    # Don't use hard-wired cosmological parameters
-    # h = 0.6777
-    # omega_m_planck = 0.307
-    # omega_vac_planck = 0.693
-    # omega_b_planck = 0.04825
-    # f_b_universal_planck = omega_b_planck/omega_m_planck
 
     BHAR_cgs = 6.445909132449984e23
     BH_erg_per_g = (0.1 * 0.15 * c_CGS**2) # eps_r eps_f c**2
