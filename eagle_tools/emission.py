@@ -2,13 +2,11 @@
 
 import numpy as np
 import h5py as h5
-from sys import exit
 import math
 from copy import deepcopy
 
 
-
-class apec(object):
+class Apec(object):
     def __init__(self,apec_table_path,energy_band=[0.5,2.]):
         '''
         Class for the extraction of interpolated spectra from the APEC plasma emission model, and for computing particle X-ray luminosities with them.
@@ -264,18 +262,7 @@ class apec(object):
         return Lx_out
 
 
-
-
-
-
-
-
-
-
-
-
-
-class cloudy(object):
+class Cloudy(object):
     def __init__(self,redshift=0.):
 
         self.metal_list = ['Carbon','Nitrogen','Oxygen','Neon','Magnesium','Silicon','Sulphur','Calcium','Iron']
