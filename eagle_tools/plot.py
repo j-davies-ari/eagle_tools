@@ -4,6 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
+# import matplotlib.gridspec as gridspec
+from matplotlib.colorbar import Colorbar
+import statsmodels.nonparametric.smoothers_lowess as lowess
+from dataclasses import dataclass
+
 
 class config(object): # Sets the font of axis labels in your code. You can also use plotparams.columnwidth etc for sizes.
     def __init__(self):
@@ -109,3 +114,169 @@ def get_moving_spearman_rank(xs,ys,colours,
         moving_rank[r], moving_pvalue[r] = spearmanr(ys[starts[r]:stops[r]],colours[starts[r]:stops[r]])
 
     return centres, moving_rank, moving_pvalue
+
+
+
+###########
+
+# Helper functions
+
+def _median_and_delta(xs,ys,lowess_frac=0.2):
+    running_median = lowess.lowess(ys, xs, frac=lowess_frac, it=3, delta=0.0, is_sorted=True, missing='drop', return_sorted=False)
+    return running_median, ys-running_median
+
+
+@dataclass
+class quantity:
+    name: str
+    data: np.array
+    limits: tuple = (None,None)
+    delta_limits: tuple = (None,None)
+    label: str = None
+
+
+# Plotting functions
+
+def coloured_scatter(
+    x: quantity,
+    y: quantity,
+    c: quantity,
+    ax,
+    method = 'hexbin',
+    delta_y = False,
+    delta_c = False,
+    cmap='turbo',
+    s=10,
+    lw=0.3,
+    hexbin_nx = 100,
+    hexbin_ny = 30,
+    hexbin_reduce = np.mean,
+    show_xlabels=True,
+    show_ylabels=True,
+    label_size=22,
+    lowess_frac = 0.2,
+    lowess_trim=10,
+    rho_ax=None,
+    rho_window_sizes=[300,100],
+    rho_window_steps=[50,25],
+    rho_transition_points=[12.,],
+    return_savestring = True
+):
+    '''
+    Generate a standard plot combo of a coloured scatter and moving rho on a given ax and rho_ax.
+    Computes the moving rank based on default settings for plots vs. M200 - can define other settings as kwargs.
+    Can also set how many datapoints to trim from each end of the running median line.
+    '''
+
+    assert method in ['hexbin','scatter'],"Argument `method` must be either `hexbin` or `scatter`."
+
+    for input_quantity in [x,y,c]:
+        if not isinstance(input_quantity,quantity):
+            raise TypeError("Input variables must be eagle_tools.plot.quantity objects.")
+
+    xdata = x.data
+    ydata = y.data
+    cdata = c.data
+
+    # Check if sorted
+    if not np.all(xdata[:-1] <= xdata[1:]):
+        sort = np.argsort(xdata)
+        xdata = xdata[sort]
+        ydata = ydata[sort]
+        cdata = cdata[sort]
+
+    trim = lambda x: x[lowess_trim:-lowess_trim]
+
+    # Find the median y and c as a function of x, and the residuals
+    ymed, ydel = _median_and_delta(xdata,ydata,lowess_frac)
+    cmed, cdel = _median_and_delta(xdata,cdata,lowess_frac)
+
+    ydata = ydel if delta_y else ydata
+    cdata = cdel if delta_c else cdata
+    clims = c.delta_limits if delta_c else c.limits
+
+    # Make the scatter plot.
+
+    if method == 'hexbin':
+        scatter = ax.hexbin(xdata,ydata,C=cdata,reduce_C_function=hexbin_reduce,cmap=cmap,vmin=clims[0],vmax=clims[1],gridsize=(hexbin_nx,hexbin_ny),lw=lw,edgecolor='gray')
+    elif method == 'scatter':
+        scatter = ax.scatter(xdata,ydata,c=cdata,cmap=cmap,vmin=clims[0],vmax=clims[1],s=s,lw=lw,edgecolor='gray',rasterized=True)
+    else:
+        # we should never get here
+        raise RuntimeError
+
+    ax.plot(trim(xdata),trim(ymed),c='w',lw=4)
+    ax.plot(trim(xdata),trim(ymed),c='k',lw=2)
+
+    # Set axis limits
+    ax.set_ylim(y.limits)
+    ax.set_xlim(x.limits)
+
+    if show_ylabels:
+        ax.set_ylabel(y.label,fontsize=22)
+    else:
+        ax.set_yticklabels([])
+
+    # Moving spearman rank axis
+    if rho_ax is not None:
+        # Hide the x labels from the main axis
+        # ax.set_xticklabels([])
+
+        # Compute the moving spearman rank, return the window centres, ranks and p-values.
+        rho_centres, rho, p = get_moving_spearman_rank(xdata, ydata, cdata, window_sizes=rho_window_sizes, window_steps=rho_window_steps, transition_points=rho_transition_points)
+
+        # Plot the running ranks
+        rho_ax.axhline(0,c='gray',lw=1)
+        rho_ax.plot(xdata[rho_centres],rho,lw=2,c='k')
+
+        rho_ax.set_xlim(x.limits)
+        rho_ax.set_ylim(-1.,1.)
+
+        if not show_xlabels:
+            rho_ax.set_xticklabels([])
+        else:
+            rho_ax.set_xlabel(x.label,fontsize=label_size)
+
+        if not show_ylabels:
+            rho_ax.set_yticklabels([])
+        else:
+            rho_ax.set_ylabel(r'$\rho$',fontsize=label_size)
+
+    else:
+        # If no spearman rank axis, show the x label on the primary axis
+        if show_xlabels:
+            ax.set_xlabel(x.label,fontsize=label_size)
+        else:
+            pass
+
+    # Return the mappable scatter for plotting colourbars.
+
+    if return_savestring:
+        return scatter, f"{x.name}_{"delta_" if delta_y else ""}{y.name}_{"delta_" if delta_c else ""}{c.name}"
+    else:
+        return scatter
+
+
+def add_colourbar(mappable,cbar_axis,
+                    label='',
+                    location='top',
+                    label_size=22):
+
+    assert location in ['top','bottom','left','right'],'Colourbar location must be top, bottom, left or right'
+
+    if location == 'top':
+        cbar = Colorbar(ax = cbar_axis, mappable = mappable, orientation = 'horizontal', ticklocation = 'top')
+        cbar.set_label(label, labelpad=10,fontsize=label_size)
+
+    elif location == 'bottom':
+        cbar = Colorbar(ax = cbar_axis, mappable = mappable, orientation = 'horizontal', ticklocation = 'bottom')
+        cbar.set_label(label, labelpad=10,fontsize=label_size)
+
+    elif location == 'right':
+        cbar = Colorbar(ax = cbar_axis, mappable = mappable, orientation = 'vertical', ticklocation = 'right')
+        cbar.set_label(label, labelpad=10,fontsize=label_size)
+
+    elif location == 'left':
+        cbar = Colorbar(ax = cbar_axis, mappable = mappable, orientation = 'vertical', ticklocation = 'left')
+        cbar.set_label(label, labelpad=10,fontsize=label_size)
+
