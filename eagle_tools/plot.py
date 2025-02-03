@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import spearmanr
-
-# import matplotlib.gridspec as gridspec
-from matplotlib.colorbar import Colorbar
-import statsmodels.nonparametric.smoothers_lowess as lowess
+from typing import Sequence
 from dataclasses import dataclass
 
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colorbar import Colorbar
+from scipy.stats import spearmanr
+import statsmodels.nonparametric.smoothers_lowess as lowess
+
+####################################################################################################
+# Simple utility functions
 
 class config(object): # Sets the font of axis labels in your code. You can also use plotparams.columnwidth etc for sizes.
     def __init__(self):
@@ -19,16 +21,15 @@ class config(object): # Sets the font of axis labels in your code. You can also 
         self.textwidth = 504.0/72.27
         self.textheight = 682.0/72.27
 
-
 def get_bincentres(bin_edges):
-
     return (bin_edges[1:] + bin_edges[:-1])/2.
 
-
 def NFW_profile(r_over_r200,c):
-
     return 1./(3. * (np.log(1+c)-c/(1.+c)) * r_over_r200 * ((1./c)+r_over_r200)**2)
 
+####################################################################################################
+
+# Moving Spearman rank and LOWESS helper functions.
 
 def get_moving_spearman_rank(xs,ys,colours,
                             window_sizes=[300,100],
@@ -103,7 +104,6 @@ def get_moving_spearman_rank(xs,ys,colours,
     else:
         raise ValueError('Please give a valid window size(s) (int or list of ints)')
 
-
     # Initialise arrays to hold the moving ranks, and their associated p-values
     moving_rank = np.zeros(len(starts))
     moving_pvalue = np.zeros(len(starts))
@@ -116,15 +116,106 @@ def get_moving_spearman_rank(xs,ys,colours,
     return centres, moving_rank, moving_pvalue
 
 
+def _median_and_delta(
+    xs: np.array,
+    ys: np.array,
+    lowess_frac: float = 0.2
+) -> tuple[np.array,np.array]:
+    """
+    Shallow wrapper for LOWESS. Calculate the running median and delta at each datapoint, with some sensible defaults set.
 
-###########
+    Args:
+        xs (np.array): x values. Must be sorted in ascending order.
+        ys (np.array): y values.
+        lowess_frac (float, optional): Fraction of the data nearest to each point over which to calculate the locally weighted median. Defaults to 0.2.
 
-# Helper functions
-
-def _median_and_delta(xs,ys,lowess_frac=0.2):
+    Returns:
+        tuple[np.array,np.array]: The running median value for each datapoint, and the difference of each y value from the median.
+    """
     running_median = lowess.lowess(ys, xs, frac=lowess_frac, it=3, delta=0.0, is_sorted=True, missing='drop', return_sorted=False)
     return running_median, ys-running_median
 
+
+def _median_and_delta_adaptive(
+    xs: np.array,
+    ys: np.array,
+    lowess_frac: float | Sequence = 0.2,
+    lowess_transition_xs: Sequence = None,
+    split_smooth_n: Sequence = None
+) -> tuple[np.array,np.array]:
+    """
+    Adaptive version of LOWESS. Calculate the running median and delta at each datapoint, with some sensible defaults set.
+    Multiple fractions of the data can be used to calculate the running median, with transition points specified at which the fraction changes.
+    The `split_smooth_n` argument can be used to smooth out discontinuities where the smoothing changes.
+
+    Args:
+        xs (np.array): x values. Must be sorted in ascending order.
+        ys (np.array): y values.
+        lowess_frac (float or Sequence, optional): Fraction of the data nearest to each point over which to calculate the locally weighted median. Can specify multiple values. Defaults to 0.2.
+        lowess_transition_xs (Sequence, optional): x values dividing the above `lowess_frac` values, if `lowess_frac` is a Sequence. Must have length len(lowess_frac)-1. Defaults to None.
+        split_smooth_n (Sequence, optional): number of data points about the transition values over which to smooth discontinuities. Must have length len(lowess_transition_xs). Defaults to None.
+
+    Returns:
+        tuple[np.array,np.array]: The running median value for each datapoint, and the difference of each y value from the median.
+    """
+
+    lowess_kwargs = dict(
+        it=3, delta=0.0, is_sorted=True, missing='drop', return_sorted=False
+    )
+
+    if isinstance(lowess_frac,Sequence):
+        if len(lowess_frac) == 1:
+            # If a len-1 list just drop back to the standard behaviour
+            lowess_frac = lowess_frac[0]
+        else:
+
+            if lowess_transition_xs is None:
+                raise ValueError("Running with split LOWESS but lowess_transition_xs not specified.")
+
+            if not isinstance(lowess_transition_xs,Sequence):
+                lowess_transition_xs = [lowess_transition_xs,]
+
+            split_points = np.searchsorted(xs,lowess_transition_xs)
+
+            lowess_runs = [
+                np.split(lowess.lowess(ys, xs, frac=lowess_frac[i], **lowess_kwargs), split_points) for i in range(len(lowess_frac))
+            ]
+
+            running_median = np.concatenate([lowess_runs[i][i] for i in range(len(lowess_frac))])
+
+            # Now try to fix any ugly joins by drawing lines across them
+            if split_smooth_n is not None:
+
+                if not isinstance(split_smooth_n,Sequence):
+                    split_smooth_n = [split_smooth_n,]
+
+                if len(split_smooth_n) != len(lowess_transition_xs):
+                    raise ValueError("split_smooth_n must be the same length as lowess_transition_xs")
+
+                for sp, split_point in enumerate(split_points):
+                    sn = split_smooth_n[sp] // 2
+
+                    split_xs = xs[split_point-sn:split_point+sn]
+                    split_med = running_median[split_point-sn:split_point+sn]
+
+                    xsamples = np.linspace(split_xs[0],split_xs[-1],10000)
+                    ysamples = np.linspace(split_med[0],split_med[-1],10000)
+
+                    running_median[split_point-sn:split_point+sn] = np.interp(split_xs,xsamples,ysamples)
+            else:
+                print("Running with split LOWESS but split_smooth_n not specified. You may get ugly joins where LOWESS splits.")
+
+
+
+            return running_median, ys-running_median
+
+    running_median = lowess.lowess(ys, xs, frac=lowess_frac, **lowess_kwargs)
+
+    return running_median, ys-running_median
+
+####################################################################################################
+
+# Coloured scatter plotting
 
 @dataclass
 class quantity:
@@ -140,7 +231,7 @@ class quantity:
 def coloured_scatter(
     x: quantity,
     y: quantity,
-    c: quantity,
+    c: quantity | None,
     ax,
     method = 'hexbin',
     delta_y = False,
@@ -148,19 +239,20 @@ def coloured_scatter(
     cmap='turbo',
     s=10,
     lw=0.3,
-    hexbin_nx = 100,
-    hexbin_ny = 30,
     hexbin_reduce = np.mean,
     show_xlabels=True,
     show_ylabels=True,
     label_size=22,
     lowess_frac = 0.2,
-    lowess_trim=10,
+    lowess_transition_xs = None,
+    split_smooth_n = None,
+    lowess_trim=0,
     rho_ax=None,
     rho_window_sizes=[300,100],
     rho_window_steps=[50,25],
     rho_transition_points=[12.,],
-    return_savestring = True
+    return_savestring = True,
+    **extra_plot_args
 ):
     '''
     Generate a standard plot combo of a coloured scatter and moving rho on a given ax and rho_ax.
@@ -170,37 +262,60 @@ def coloured_scatter(
 
     assert method in ['hexbin','scatter'],"Argument `method` must be either `hexbin` or `scatter`."
 
-    for input_quantity in [x,y,c]:
+    for input_quantity in [x,y]:
         if not isinstance(input_quantity,quantity):
             raise TypeError("Input variables must be eagle_tools.plot.quantity objects.")
 
     xdata = x.data
     ydata = y.data
-    cdata = c.data
 
     # Check if sorted
     if not np.all(xdata[:-1] <= xdata[1:]):
         sort = np.argsort(xdata)
         xdata = xdata[sort]
         ydata = ydata[sort]
-        cdata = cdata[sort]
+    else:
+        sort = range(len(xdata))
 
-    trim = lambda x: x[lowess_trim:-lowess_trim]
+    trim = lambda x: x[lowess_trim:-1-lowess_trim]
 
     # Find the median y and c as a function of x, and the residuals
-    ymed, ydel = _median_and_delta(xdata,ydata,lowess_frac)
-    cmed, cdel = _median_and_delta(xdata,cdata,lowess_frac)
-
+    # ymed, ydel = _median_and_delta(xdata,ydata,lowess_frac)
+    ymed, ydel = _median_and_delta_adaptive(
+        xdata,ydata,
+        lowess_frac=lowess_frac,
+        lowess_transition_xs=lowess_transition_xs,
+        split_smooth_n=split_smooth_n
+    )
     ydata = ydel if delta_y else ydata
-    cdata = cdel if delta_c else cdata
-    clims = c.delta_limits if delta_c else c.limits
+    
+    # Also preprocess colours if they were specified
+    if c is not None:
+        if not isinstance(c,quantity):
+            raise TypeError("Input variables must be eagle_tools.plot.quantity objects.")
+        cdata = c.data
+        c_name = c.name
+        cdata = cdata[sort]
+        cmed, cdel = _median_and_delta_adaptive(
+            xdata,cdata,
+            lowess_frac=lowess_frac,
+            lowess_transition_xs=lowess_transition_xs,
+            split_smooth_n=split_smooth_n
+        )
+        cdata = cdel if delta_c else cdata
+        clims = c.delta_limits if delta_c else c.limits
+    else:
+        cdata = None
+        c_name = 'hist'
+        clims = [None,None]
+        delta_c = False
 
     # Make the scatter plot.
 
     if method == 'hexbin':
-        scatter = ax.hexbin(xdata,ydata,C=cdata,reduce_C_function=hexbin_reduce,cmap=cmap,vmin=clims[0],vmax=clims[1],gridsize=(hexbin_nx,hexbin_ny),lw=lw,edgecolor='gray')
+        scatter = ax.hexbin(xdata,ydata,C=cdata,reduce_C_function=hexbin_reduce,cmap=cmap,vmin=clims[0],vmax=clims[1],lw=lw,edgecolor='gray',**extra_plot_args)
     elif method == 'scatter':
-        scatter = ax.scatter(xdata,ydata,c=cdata,cmap=cmap,vmin=clims[0],vmax=clims[1],s=s,lw=lw,edgecolor='gray',rasterized=True)
+        scatter = ax.scatter(xdata,ydata,c=cdata,cmap=cmap,vmin=clims[0],vmax=clims[1],s=s,lw=lw,edgecolor='gray',rasterized=True,**extra_plot_args)
     else:
         # we should never get here
         raise RuntimeError
@@ -219,6 +334,11 @@ def coloured_scatter(
 
     # Moving spearman rank axis
     if rho_ax is not None:
+
+        # Can't add a rho axis if there are no colours
+        if c is None:
+            raise ValueError("Can't add a rho axis if no colours were specified.")
+
         # Hide the x labels from the main axis
         # ax.set_xticklabels([])
 
@@ -252,7 +372,7 @@ def coloured_scatter(
     # Return the mappable scatter for plotting colourbars.
 
     if return_savestring:
-        return scatter, f"{x.name}_{"delta_" if delta_y else ""}{y.name}_{"delta_" if delta_c else ""}{c.name}"
+        return scatter, f"{x.name}_{"delta_" if delta_y else ""}{y.name}_{"delta_" if delta_c else ""}{c_name}"
     else:
         return scatter
 
